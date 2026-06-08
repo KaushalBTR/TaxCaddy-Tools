@@ -1,0 +1,2565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QA Report Generator — ADO Auto-Setup</title>
+<script>
+// Load PptxGenJS from multiple sources - try server proxy first, then CDN fallback
+(function() {
+  function loadScript(src, onOk, onFail) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.onload = onOk;
+    s.onerror = onFail;
+    document.head.appendChild(s);
+  }
+  // Try 1: local server cache
+  loadScript('/pptxgen.js', function() {
+    console.log('PptxGenJS loaded from local server');
+  }, function() {
+    console.warn('Local pptxgen failed, trying CDN...');
+    // Try 2: CDN directly
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundled.js', function() {
+      console.log('PptxGenJS loaded from CDN');
+    }, function() {
+      console.error('All pptxgen sources failed');
+      window._pptxFailed = true;
+    });
+  });
+})();
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0F1F3D;
+    --navy2: #1B2E52;
+    --teal: #1D9E75;
+    --teal-light: #E1F5EE;
+    --blue: #185FA5;
+    --blue-light: #E6F1FB;
+    --red: #E24B4A;
+    --red-light: #FCEBEB;
+    --amber: #BA7517;
+    --amber-light: #FAEEDA;
+    --gray: #F4F5F7;
+    --border: #E2E4E9;
+    --text: #1B2A4A;
+    --muted: #6B7280;
+    --white: #ffffff;
+    --success: #059669;
+    --success-bg: #D1FAE5;
+    --error: #DC2626;
+    --error-bg: #FEE2E2;
+    --warn: #D97706;
+    --warn-bg: #FEF3C7;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #F0F2F7;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* ── TOP HEADER ─────────────────────────────────── */
+  .app-header {
+    background: var(--navy);
+    padding: 0 2rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .app-header .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); }
+  .app-header .badge {
+    font-size: 11px;
+    background: rgba(29,158,117,0.2);
+    color: #5DCAA5;
+    border: 1px solid rgba(29,158,117,0.3);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-weight: 500;
+  }
+
+  /* ── LAYOUT ─────────────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: calc(100vh - 56px);
+  }
+
+  /* ── SIDEBAR ─────────────────────────────────────── */
+  .sidebar {
+    background: var(--white);
+    border-right: 1px solid var(--border);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .sidebar-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 0 10px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--white);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(24,95,165,0.12); }
+  input.mono { font-family: 'DM Mono', monospace; font-size: 12px; }
+
+  .field { margin-bottom: 0.9rem; }
+  .field:last-child { margin-bottom: 0; }
+
+  .pat-note {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+    background: var(--gray);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .pat-note a { color: var(--blue); text-decoration: none; }
+  .pat-note a:hover { text-decoration: underline; }
+
+  .conn-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+  }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: #D1D5DB; flex-shrink: 0; }
+
+  /* ── Logged-in user badge ─────────────────────────── */
+  .user-badge {
+    display: none;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #EEF6FF 0%, #E6F4F1 100%);
+    border: 1px solid #C3DDF9;
+    border-radius: 8px;
+    margin-top: 6px;
+  }
+  .user-badge.visible { display: flex; }
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+    overflow: hidden;
+  }
+  .user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .user-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .user-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-email { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-tag { margin-left: auto; font-size: 10px; font-weight: 600; background: var(--teal); color: #fff; border-radius: 20px; padding: 2px 8px; flex-shrink: 0; }
+  .conn-status.connected { background: var(--success-bg); border-color: #A7F3D0; color: var(--success); }
+  .conn-status.connected .conn-dot { background: var(--success); }
+  .conn-status.error { background: var(--error-bg); border-color: #FECACA; color: var(--error); }
+  .conn-status.error .conn-dot { background: var(--error); }
+
+  .btn {
+    width: 100%;
+    height: 38px;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: all 0.15s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-secondary { background: var(--gray); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: #E5E7EB; }
+  .btn-primary { background: var(--navy); color: var(--white); }
+  .btn-primary:hover { background: var(--navy2); }
+  .btn-teal { background: var(--teal); color: var(--white); }
+  .btn-teal:hover { background: #169963; }
+  .btn-teal:disabled { background: #9CA3AF; cursor: not-allowed; }
+  .btn-outline { background: transparent; color: var(--blue); border: 1px solid var(--blue); }
+  .btn-outline:hover { background: var(--blue-light); }
+
+  /* ── MAIN ───────────────────────────────────────── */
+  .main { padding: 2rem; display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto; }
+
+  /* ── RELEASE HERO ───────────────────────────────── */
+  .release-hero {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+  .release-hero .big-label { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 6px; }
+  .release-input-big {
+    flex: 1;
+    height: 48px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 0 16px;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--gray);
+    letter-spacing: -0.3px;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  }
+  .release-input-big:focus { outline: none; border-color: var(--navy); background: var(--white); box-shadow: 0 0 0 4px rgba(15,31,61,0.1); }
+  .btn-generate {
+    height: 48px;
+    padding: 0 28px;
+    border: none;
+    border-radius: 10px;
+    background: var(--navy);
+    color: var(--white);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    letter-spacing: -0.2px;
+    transition: all 0.15s;
+    box-shadow: 0 2px 8px rgba(15,31,61,0.25);
+  }
+  .btn-generate:hover { background: var(--navy2); box-shadow: 0 4px 16px rgba(15,31,61,0.3); transform: translateY(-1px); }
+  .btn-generate:active { transform: scale(0.98) translateY(0); }
+  .btn-generate:disabled { background: #9CA3AF; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-generate svg { width: 18px; height: 18px; }
+
+  /* ── PROGRESS ───────────────────────────────────── */
+  .progress-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    display: none;
+  }
+  .progress-card.visible { display: block; }
+  .progress-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 1.25rem; }
+  .step-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--gray);
+  }
+  .step-row:last-child { border-bottom: none; }
+  .step-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+    color: var(--muted);
+    background: var(--gray);
+    transition: all 0.3s;
+  }
+  .step-icon.running { border-color: var(--blue); color: var(--blue); background: var(--blue-light); animation: pulse 1s infinite; }
+  .step-icon.done { border-color: var(--success); color: var(--white); background: var(--success); }
+  .step-icon.error { border-color: var(--error); color: var(--white); background: var(--error); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .step-label { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
+  .step-detail { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .step-detail a { color: var(--blue); text-decoration: none; }
+  .step-detail a:hover { text-decoration: underline; }
+
+  /* ── RESULTS ────────────────────────────────────── */
+  .results-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    display: none;
+  }
+  .results-card.visible { display: block; }
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 1rem 0; }
+  .result-tile {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    background: var(--gray);
+  }
+  .result-tile .rt-icon { font-size: 20px; margin-bottom: 6px; }
+  .result-tile .rt-num { font-size: 24px; font-weight: 700; color: var(--navy); }
+  .result-tile .rt-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .result-tile.success { background: var(--success-bg); border-color: #A7F3D0; }
+  .result-tile.success .rt-num { color: var(--success); }
+
+  .links-section { margin-top: 1rem; }
+  .links-section .link-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--gray);
+    font-size: 13px;
+  }
+  .links-section .link-row:last-child { border-bottom: none; }
+  .links-section .link-icon { width: 28px; height: 28px; border-radius: 6px; background: var(--blue-light); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .links-section a { color: var(--blue); text-decoration: none; font-weight: 500; }
+  .links-section a:hover { text-decoration: underline; }
+
+  .action-row { display: flex; gap: 10px; margin-top: 1.25rem; flex-wrap: wrap; }
+  .action-row .btn { width: auto; padding: 0 20px; }
+
+  /* ── ACCORDION / PREVIEW ────────────────────────── */
+  .preview-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .preview-header {
+    padding: 1rem 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .preview-header:hover { background: var(--gray); }
+  .preview-title { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .preview-body { padding: 0 1.75rem 1.5rem; display: none; }
+  .preview-body.open { display: block; }
+  .chevron-icon { transition: transform 0.2s; }
+  .chevron-icon.open { transform: rotate(180deg); }
+
+  /* Query preview table */
+  .q-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .q-table th { background: var(--gray); font-weight: 600; color: var(--muted); padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .q-table td { padding: 7px 10px; border-bottom: 1px solid var(--gray); vertical-align: top; }
+  .q-table tr:last-child td { border-bottom: none; }
+  .q-tag { display: inline-block; background: var(--blue-light); color: var(--blue); padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 500; font-family: 'DM Mono', monospace; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--navy);
+    color: var(--white);
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.25s;
+    pointer-events: none;
+    max-width: 320px;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--error); }
+
+  /* spinner svg */
+  .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="app-header">
+  <div class="logo">
+    <span class="logo-dot"></span>
+    QA Report Generator
+  </div>
+  <span class="badge">ADO Auto-Setup</span>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR: Config -->
+  <aside class="sidebar">
+    <div class="sidebar-title">⚙ ADO Configuration</div>
+
+    <div class="field">
+      <label>Organization Name</label>
+      <input type="text" id="orgName" class="mono" placeholder="e.g. mycompany" value="tr-tax" />
+    </div>
+    <div class="field">
+      <label>Project Name</label>
+      <input type="text" id="projectName" class="mono" placeholder="e.g. TaxProfisurePrep" value="TaxProf" />
+    </div>
+    <div class="field">
+      <label>Team Name</label>
+      <select id="teamName" onchange="onTeamChange()" style="width:100%;height:36px;border:1px solid var(--border);border-radius:7px;padding:0 10px;font-family:inherit;font-size:13px;color:var(--text);background:var(--white);">
+        <option value="">-- Select Team --</option>
+        <option value="surePrep-tcd-mavericks">surePrep-tcd-mavericks</option>
+        <option value="surePrep-tcd-elite">surePrep-tcd-elite</option>
+        <option value="surePrep-tcd-knights">surePrep-tcd-knights</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Area Path</label>
+      <input type="text" id="areaPath" placeholder="Auto-filled on team selection" />
+    </div>
+    <div class="field">
+      <label>Query Folder Path</label>
+      <input type="text" id="queryFolderPath" placeholder="e.g. My Queries or Shared Queries/surePrep/Taxcaddy-Team Mavericks/Release Report Queries for QA" style="font-size:11px;" />
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5;">Path where release subfolder will be created. Leave blank to use <strong>My Queries</strong> as default.</div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:1rem;margin-top:0.25rem;">
+      <div class="sidebar-title" style="margin-bottom:0.75rem;">🏷 Query Tags</div>
+      <div class="field">
+        <label>Bugs Found Tag</label>
+        <input type="text" id="bugsFoundTagInput" class="mono" placeholder="e.g. BugsFoundIN_June_10.5.0" style="font-size:12px;" oninput="updatePreviews()" />
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">Used in: Bugs Found, Bugs Found &amp; Fixed, Open Bugs, Deferred Bugs queries.</div>
+      </div>
+      <div class="field">
+        <label>Deferred Bug Tag</label>
+        <input type="text" id="deferredTagInput" class="mono" placeholder="e.g. Deferred_Mavericks_June_10.5.0" style="font-size:12px;" oninput="updatePreviews()" />
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">Used in: Deferred Bugs, Open Bugs queries.</div>
+      </div>
+    </div>
+        <div class="field">
+      <label>Personal Access Token (PAT)</label>
+      <input type="password" id="patToken" class="mono" placeholder="Paste your PAT here" />
+      <div class="pat-note" style="margin-top:6px;">
+        Need a PAT? Go to ADO → User Settings → Personal Access Tokens → New Token. Grant <strong>Work Items: Read &amp; Write</strong> and <strong>Dashboards: Read &amp; Write</strong>.
+        <br/><a href="https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate" target="_blank">Learn more ↗</a>
+      </div>
+    </div>
+
+    <div class="conn-status" id="connStatus">
+      <span class="conn-dot"></span>
+      <span id="connText">Not connected — click Test</span>
+    </div>
+
+    <div class="user-badge" id="userBadge">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-info">
+        <div class="user-name" id="userName">—</div>
+        <div class="user-email" id="userEmail"></div>
+      </div>
+      <div class="user-tag">Logged In</div>
+    </div>
+
+    <button class="btn btn-secondary" onclick="testConnection()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+      Test Connection
+    </button>
+
+    <div style="border-top:1px solid var(--border); padding-top:1rem; margin-top:0.25rem;">
+      <div class="sidebar-title" style="margin-bottom:0.75rem;">💾 Save Config</div>
+      <button class="btn btn-secondary" onclick="saveConfig()" style="margin-bottom:8px;">Save to Browser</button>
+      <button class="btn btn-secondary" onclick="loadConfig()">Load Saved</button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+
+    <!-- RELEASE INPUT -->
+    <div class="release-hero">
+      <div style="flex:1;">
+        <div class="big-label">Release Version</div>
+        <select id="releaseVersion" class="release-input-big" style="width:100%;cursor:pointer;background:var(--gray);" onchange="updatePreviews()">
+          <option value="">-- Select a version --</option>
+        </select>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+          <button onclick="manualLoadVersions()" class="btn btn-secondary" style="height:30px;font-size:12px;padding:0 12px;white-space:nowrap;">⟳ Load Versions from ADO</button>
+          <div id="releaseVersionHint" style="font-size:11px;color:var(--muted);">Select team then click Load.</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn-generate" id="generateBtn" onclick="runAll()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/></svg>
+          Generate All in ADO
+        </button>
+        <button class="btn btn-outline" onclick="viewReport()" style="height:42px;font-size:13px;border-radius:10px;">
+          👁 View Existing Report
+        </button>
+      </div>
+    </div>
+
+    <!-- QUERY PREVIEW (always visible) -->
+    <div class="preview-card">
+      <div class="preview-header" onclick="togglePreview('qPreview', 'qChevron')">
+        <div class="preview-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 10h8M8 14h5"/></svg>
+          6 Queries that will be created
+        </div>
+        <svg class="chevron-icon" id="qChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="preview-body" id="qPreview">
+        <table class="q-table">
+          <thead><tr><th>#</th><th>Query Name</th><th>Key Filters</th></tr></thead>
+          <tbody id="queryPreviewBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DASHBOARD PREVIEW -->
+    <div class="preview-card">
+      <div class="preview-header" onclick="togglePreview('dPreview', 'dChevron')">
+        <div class="preview-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          8 Dashboard Widgets that will be created
+        </div>
+        <svg class="chevron-icon" id="dChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="preview-body" id="dPreview">
+        <div id="dashPreviewBody" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:0.5rem;"></div>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="progress-card" id="progressCard">
+      <div class="progress-title">🚀 Creating everything in ADO…</div>
+      <div id="stepRows"></div>
+    </div>
+
+    <!-- VIEWER -->
+    <div class="results-card" id="viewerCard">
+      <div id="viewerContent"></div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results-card" id="resultsCard">
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:0.5rem;">✅ All Done!</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:1rem;">Everything has been created in ADO and your PPT is ready to download.</div>
+      <div class="results-grid" id="resultsGrid"></div>
+      <div class="links-section" id="linksSection"></div>
+      <div id="manualWidgetGuide" style="display:none;margin-top:1rem;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:1rem 1.25rem;">
+        <div style="font-size:13px;font-weight:600;color:#5D4037;margin-bottom:0.5rem;">📊 Manual Widget Addition Required</div>
+        <div style="font-size:12px;color:#5D4037;margin-bottom:0.75rem;">ADO's chart widget API requires adding these 4 widgets manually. Here's exactly how:</div>
+        <ol style="font-size:12px;color:#4E342E;padding-left:1.2rem;line-height:1.9;">
+          <li>Open your dashboard → click <strong>Edit</strong> (top right)</li>
+          <li>Click <strong>+ Add Widget</strong> → search <strong>"Chart for Work Items"</strong></li>
+          <li>Add widget, then configure it:</li>
+        </ol>
+        <div id="manualWidgetList" style="margin-top:0.5rem;font-size:12px;"></div>
+      </div>
+      <div id="widgetErrorPanel" style="display:none;margin-top:1rem;background:#FEEBEB;border:1px solid #F5C6CB;border-radius:8px;padding:1rem 1.25rem;">
+        <div style="font-size:13px;font-weight:600;color:#721C24;margin-bottom:0.5rem;">🔧 Widget API Error Diagnostics</div>
+        <div id="widgetErrorList" style="font-size:11px;font-family:'DM Mono',monospace;"></div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-teal" onclick="downloadPPT()" id="pptBtn">⬇ Download PPT Report</button>
+        <button class="btn btn-outline" onclick="resetAll()">↺ New Release</button>
+        <button class="btn" onclick="confirmDelete()" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA;">🗑 Delete This Report</button>
+      </div>
+    </div>
+
+    
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────
+let state = {
+  orgName: '', projectName: '', teamName: '', areaPath: '', pat: '',
+  releaseVersion: '', tag: '',
+  createdQueries: {},   // name -> id+url
+  dashboardId: '', dashboardUrl: '',
+  today: ''
+};
+
+// Build SELECT clause dynamically using discovered field names
+function buildSelect() {
+  const base = ['System.Id','System.WorkItemType','System.Title','System.AssignedTo','System.State','System.Tags',
+    state.fieldPriority || 'Microsoft.VSTS.Common.Priority',
+    state.fieldSeverity || 'Microsoft.VSTS.Common.Severity'];
+  const custom = [state.fieldEnv, state.fieldRootCause, state.fieldRCA, state.fieldDefectReason].filter(Boolean);
+  return 'SELECT ' + [...base, ...custom].map(f => '[' + f + ']').join(',');
+}
+
+const QUERY_DEFS = [
+  // 1. Bugs Found & Fixed — Tags Contains {tag}, State=Closed
+  {
+    key: 'bugsFoundFixed',
+    name: () => 'Bugs Found & Fixed in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',
+    wiql: () => buildSelect() + " FROM WorkItems WHERE [System.WorkItemType] = 'Bug' AND [System.State] = 'Closed' AND [System.AreaPath] = '" + state.areaPath + "' AND [System.Tags] Contains '" + state.bugsFoundTag + "' ORDER BY [System.ChangedDate] DESC"
+  },
+  // 2. Bugs Found — Tags Contains {tag}, State=[Any]
+  {
+    key: 'bugsFound',
+    name: () => 'Bugs Found in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',
+    wiql: () => buildSelect() + " FROM WorkItems WHERE [System.WorkItemType] = 'Bug' AND [System.AreaPath] = '" + state.areaPath + "' AND [System.Tags] Contains '" + state.bugsFoundTag + "' ORDER BY [System.ChangedDate] DESC"
+  },
+  // 3. Deferred Bugs — Tags Contains {tag} + Deferred_Mavericks_{tag}
+  {
+    key: 'deferredBugs',
+    name: () => 'Deferred Bugs in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',
+    wiql: () => buildSelect() + " FROM WorkItems WHERE [System.WorkItemType] = 'Bug' AND [System.AreaPath] = '" + state.areaPath + "' AND [System.Tags] Contains '" + state.bugsFoundTag + "' AND [System.Tags] Contains '" + state.deferredTag + "' ORDER BY [System.ChangedDate] DESC"
+  },
+  // 4. Open Bugs — Tags Contains {tag}, State<>Closed, Does Not Contain Deferred
+  {
+    key: 'openBugs',
+    name: () => 'Open Bugs in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',
+    wiql: () => buildSelect() + " FROM WorkItems WHERE [System.WorkItemType] = 'Bug' AND [System.State] <> 'Closed' AND [System.AreaPath] = '" + state.areaPath + "' AND [System.Tags] Contains '" + state.bugsFoundTag + "' AND [System.Tags] Not Contains '" + state.deferredTag + "' ORDER BY [System.ChangedDate] DESC"
+  },
+  // 5. Total Bug Fixed — Release Version field = {releaseVersion}, State=Closed
+  {
+    key: 'totalFixed',
+    name: () => 'Total Bug Fixed in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',
+    wiql: () => buildSelect() + " FROM WorkItems WHERE [System.WorkItemType] = 'Bug' AND [System.State] = 'Closed' AND [System.AreaPath] = '" + state.areaPath + "' AND [" + state.rvFieldName + "] = '" + state.releaseVersion + "' ORDER BY [System.ChangedDate] DESC"
+  },
+  // 6. Total Work Items — Release Version field = {releaseVersion}
+  {
+    key: 'totalWorkItems',
+    name: () => 'Total Work Items in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',
+    wiql: () => buildSelect() + " FROM WorkItems WHERE [System.AreaPath] = '" + state.areaPath + "' AND [" + state.rvFieldName + "] = '" + state.releaseVersion + "' ORDER BY [System.ChangedDate] DESC"
+  }
+];
+
+const WIDGET_DEFS = [
+  // Row 0-1: Two column charts (Chart for Work Items)
+  // From screenshot: Chart type=Column, Group by=Priority, Query=Bugs Found
+  {
+    title: 'Defect by Priority',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.WitChartWidget',
+    queryKey: 'bugsFound',
+    chartType: 'ColumnChart',
+    groupBy: 'Microsoft.VSTS.Common.Priority',
+    sortOrder: 'ascending',
+    row: 0, col: 0, rowSpan: 2, colSpan: 2
+  },
+  {
+    title: 'Defect by Severity',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.WitChartWidget',
+    queryKey: 'bugsFound',
+    chartType: 'ColumnChart',
+    groupBy: 'Microsoft.VSTS.Common.Severity',
+    sortOrder: 'ascending',
+    row: 0, col: 2, rowSpan: 2, colSpan: 2
+  },
+  // Row 2-3: Pie chart (Width=2, Height=2) + 4 count tiles
+  {
+    title: 'Total Work Items in ' + state.teamDisplayName + '',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.WitChartWidget',
+    queryKey: 'totalWorkItems',
+    chartType: 'PieChart',
+    groupBy: 'System.WorkItemType',
+    sortOrder: 'descending',
+    row: 2, col: 0, rowSpan: 2, colSpan: 2
+  },
+  {
+    title: 'Closed Defect',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.QueryScalarWidget',
+    queryKey: 'totalFixed',
+    color: '107C10',
+    row: 2, col: 2, rowSpan: 1, colSpan: 1
+  },
+  {
+    title: 'Open Defect',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.QueryScalarWidget',
+    queryKey: 'openBugs',
+    color: 'DA0A00',
+    row: 2, col: 3, rowSpan: 1, colSpan: 1
+  },
+  {
+    title: 'Deferred Defect',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.QueryScalarWidget',
+    queryKey: 'deferredBugs',
+    color: '107C10',
+    row: 3, col: 2, rowSpan: 1, colSpan: 1
+  },
+  {
+    title: 'Defect Found & ...',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.QueryScalarWidget',
+    queryKey: 'bugsFoundFixed',
+    color: 'FF8C00',
+    row: 3, col: 3, rowSpan: 1, colSpan: 1
+  },
+  // Row 4-5: Bug List full width (Width=8, Height=2 from screenshot)
+  {
+    title: 'Bug List for ' + state.teamDisplayName + '',
+    contributionId: 'ms.vss-dashboards-web.Microsoft.VisualStudioOnline.Dashboards.QueryResultWidget',
+    queryKey: 'totalFixed',
+    color: '',
+    row: 4, col: 0, rowSpan: 2, colSpan: 4
+  }
+];
+
+// ─────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────
+// Team → Area Path mapping
+const TEAM_AREA_MAP = {
+  'surePrep-tcd-mavericks': 'TaxProf\\surePrep\\components\\TaxCaddy\\surePrep-tcd-mavericks',
+  'surePrep-tcd-elite':     'TaxProf\\surePrep\\components\\TaxCaddy\\surePrep-tcd-elite',
+  'surePrep-tcd-knights':   'TaxProf\\surePrep\\components\\TaxCaddy\\surePrep-tcd-knights'
+};
+
+function onTeamChange() {
+  const team = document.getElementById('teamName').value;
+  // Auto-fill area path
+  const ap = TEAM_AREA_MAP[team] || '';
+  document.getElementById('areaPath').value = ap;
+  updatePreviews();
+  // Load existing release versions from ADO for this team
+  if (team) loadReleaseVersions(team);
+}
+
+async function loadReleaseVersions(teamName) {
+  const org      = document.getElementById('orgName').value.trim();
+  const proj     = document.getElementById('projectName').value.trim();
+  const pat      = document.getElementById('patToken').value.trim();
+  const sel      = document.getElementById('releaseVersion');
+  const hint     = document.getElementById('releaseVersionHint');
+  const areaPath = TEAM_AREA_MAP[teamName] || document.getElementById('areaPath').value.trim();
+
+  if (!org || !proj || !pat) {
+    hint.textContent = 'Fill Org, Project and PAT then click Test Connection to load versions.';
+    return;
+  }
+  if (!areaPath) {
+    hint.textContent = 'Select a team first to load versions.';
+    return;
+  }
+
+  hint.textContent = 'Loading versions from ADO…';
+  sel.innerHTML = '<option value="">Loading…</option>';
+
+  const rvField   = 'Custom.ReleaseVersion';
+  const authHdr   = { 'Authorization': 'Basic ' + btoa(':' + pat), 'Content-Type': 'application/json' };
+  const proxyBase = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj);
+
+  try {
+    // Step 1: WIQL — get IDs of work items in this team's area with a ReleaseVersion set
+    const wiql = "SELECT [System.Id] FROM WorkItems"
+      + " WHERE [System.AreaPath] UNDER '" + areaPath.replace(/'/g, "''") + "'"
+      + " AND [" + rvField + "] <> ''"
+      + " AND [System.ChangedDate] >= @Today - 365"
+      + " ORDER BY [System.ChangedDate] DESC";
+
+    const wiqlResp = await fetch(proxyBase + '/_apis/wit/wiql?api-version=7.1&$top=2000', {
+      method: 'POST',
+      headers: authHdr,
+      body: JSON.stringify({ query: wiql })
+    });
+
+    if (!wiqlResp.ok) throw new Error('WIQL ' + wiqlResp.status);
+    const wiqlData  = await wiqlResp.json();
+    const ids       = (wiqlData.workItems || []).map(w => w.id);
+
+    if (!ids.length) {
+      sel.innerHTML = '<option value="">No versions found — check area path</option>';
+      hint.textContent = 'No work items with Release Version found. Check PAT has Work Items: Read scope.';
+      return;
+    }
+
+    // Step 2: Batch fetch ReleaseVersion values (200 per batch)
+    const versions = new Set();
+    for (let i = 0; i < ids.length; i += 200) {
+      const batch = ids.slice(i, i + 200);
+      try {
+        const bResp = await fetch(proxyBase + '/_apis/wit/workitemsbatch?api-version=7.1', {
+          method: 'POST',
+          headers: authHdr,
+          body: JSON.stringify({ ids: batch, fields: ['System.Id', rvField] })
+        });
+        if (!bResp.ok) continue;
+        const bData = await bResp.json();
+        (bData.value || []).forEach(wi => {
+          const v = wi.fields && wi.fields[rvField];
+          if (v !== undefined && v !== null && String(v).trim()) versions.add(String(v).trim());
+        });
+      } catch(e) {}
+    }
+
+    if (!versions.size) {
+      sel.innerHTML = '<option value="">No versions found</option>';
+      hint.textContent = 'No Release Version values found. Type manually or check Custom.ReleaseVersion field.';
+      return;
+    }
+
+    // Step 3: Filter to versions matching this team name
+    let teamDisplay = teamName || 'Team';
+    teamDisplay = teamDisplay.replace(/^surePrep-tcd-/i, '')
+                             .replace(/^taxcaddy-team-/i, '')
+                             .replace(/^[-_]/, '');
+    teamDisplay = teamDisplay.charAt(0).toUpperCase() + teamDisplay.slice(1);
+
+    const needle   = teamDisplay.toLowerCase();
+    const filtered = Array.from(versions).filter(v => v.toLowerCase().includes(needle));
+    const usable   = filtered.length ? filtered : Array.from(versions);
+
+    // Sort reverse-alphabetical (newest first)
+    const sorted = usable.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+
+    sel.innerHTML = '<option value="">-- Select existing version --</option>';
+    sorted.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = v;
+      sel.appendChild(opt);
+    });
+
+    const dropped = versions.size - sorted.length;
+    hint.textContent = sorted.length + ' versions for ' + teamDisplay
+      + (dropped > 0 ? ' (' + dropped + ' other-team versions hidden)' : '')
+      + '. Select one.';
+
+  } catch(e) {
+    sel.innerHTML = '<option value="">Could not load — check PAT</option>';
+    hint.textContent = 'Error: ' + e.message;
+  }
+}
+
+// Manual trigger for Load Versions button
+function manualLoadVersions() {
+  const team = document.getElementById('teamName').value;
+  if (!team) { toast('Please select a team first', 'error'); return; }
+  loadReleaseVersions(team);
+}
+
+// Find "Release Report Queries for QA" folder — searches entire tree
+function findReleaseFolder(node, teamDisplay) {
+  if (!node) return null;
+  const name = (node.name || '').toLowerCase();
+
+  // Direct match for Release Report Queries for QA
+  if (name === 'release report queries for qa') return node;
+
+  // Recurse into ALL children (no filtering — team names vary)
+  const kids = node.children || [];
+  for (const child of kids) {
+    const found = findReleaseFolder(child, teamDisplay);
+    if (found) return found;
+  }
+  return null;
+}
+
+function tagify(v) { return v.replace(/\s+/g, '_'); }
+
+// "TC_26_Mavericks _May_10.5.0" already contains team name → return as-is.
+// "May 10.4.0" → "Mavericks May 10.4.0" (prefix added).
+function teamScopedRelease() {
+  const v = (state.releaseVersion || '').trim();
+  const team = (state.teamDisplayName || '').trim();
+  if (!team) return v;
+  return v.toLowerCase().includes(team.toLowerCase()) ? v : (team + ' ' + v);
+}
+function getToday() {
+  return new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+}
+function adoBase() {
+  // Route through local proxy to avoid CORS
+  return `http://localhost:4000/ado-proxy/${encodeURIComponent(state.orgName)}/${encodeURIComponent(state.projectName)}`;
+}
+function adoOrgBase() {
+  return `http://localhost:4000/ado-proxy/${encodeURIComponent(state.orgName)}`;
+}
+// Real ADO URLs for clickable links (not proxy)
+function realAdoBase() {
+  return `https://dev.azure.com/${encodeURIComponent(state.orgName)}/${encodeURIComponent(state.projectName)}`;
+}
+function adoHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': 'Basic ' + btoa(':' + state.pat)
+  };
+}
+async function adoFetch(url, method, body) {
+  const opts = { method, headers: adoHeaders() };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`${r.status} ${r.statusText}: ${t.substring(0, 200)}`);
+  }
+  return r.json();
+}
+
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  setTimeout(() => { el.className = 'toast'; }, 3500);
+}
+
+function setStep(idx, status, detail='') {
+  const icon = document.getElementById(`step-icon-${idx}`);
+  const det  = document.getElementById(`step-detail-${idx}`);
+  if (!icon) return;
+  icon.className = 'step-icon ' + status;
+  if (status === 'running') icon.innerHTML = '<span class="spin">⟳</span>';
+  else if (status === 'done') icon.innerHTML = '✓';
+  else if (status === 'error') icon.innerHTML = '✕';
+  if (det && detail) det.innerHTML = detail;
+}
+
+// ─────────────────────────────────────────────────────────
+// PREVIEW TABLES
+// ─────────────────────────────────────────────────────────
+function updatePreviews() {
+  const rv = document.getElementById('releaseVersion').value.trim() || '{Version}';
+  const tag = tagify(rv);
+
+  const tbody = document.getElementById('queryPreviewBody');
+  const descriptions = [
+    'Type=Bug, State=Closed, Tags Contains BugsFoundIn{tag} + Release_{tag}',
+    'Type=Bug, State=[Any], Tags Contains BugsFoundIn{tag}',
+    'Type=Bug, State=Closed, Tags Contains {tag} + Deferred_{team}_{tag}',
+    'Type=Bug, State<>Closed, Tags Contains Release_{tag}, Not Contains Deferred_{tag}',
+    'Type=Bug, State=Closed, AreaPath, Release Version = {version}',
+    'Type=[Any], State=Closed, AreaPath, Release Version = {version}'
+  ];
+  tbody.innerHTML = QUERY_DEFS.map((q, i) => {
+    const tmpState = { releaseVersion: rv, tag, areaPath: state.areaPath || 'YourAreaPath' };
+    const origState = Object.assign({}, state);
+    Object.assign(state, tmpState);
+    const name = q.name();
+    Object.assign(state, origState);
+    const desc = descriptions[i].replace(/{tag}/g, tag).replace(/{version}/g, rv);
+    return '<tr>' +
+      '<td style="color:var(--muted);width:28px;">' + (i+1) + '</td>' +
+      '<td style="font-weight:500;">' + name + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);">' + desc + '</td>' +
+    '</tr>';
+  }).join('');
+
+  const db = document.getElementById('dashPreviewBody');
+  db.innerHTML = WIDGET_DEFS.map(w => {
+    const colors = {'00AA00':'#EAF3DE','EE2222':'#FCEBEB','E67C13':'#FAEEDA','':'#F4F5F7'};
+    const bg = colors[w.color] || '#F4F5F7';
+    const dot = w.color ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#${w.color};margin-right:5px;vertical-align:middle;"></span>` : '';
+    return `<div style="background:${bg};border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${dot}${w.title}</div>
+      <div style="font-size:12px;font-weight:500;color:var(--text);">${w.type.split('.').pop().replace('Widget','')}</div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('releaseVersion').addEventListener('input', updatePreviews);
+window.addEventListener('load', updatePreviews);
+
+function togglePreview(bodyId, chevronId) {
+  const body = document.getElementById(bodyId);
+  const chev = document.getElementById(chevronId);
+  body.classList.toggle('open');
+  chev.classList.toggle('open');
+}
+
+// ─────────────────────────────────────────────────────────
+// SAVE / LOAD CONFIG
+// ─────────────────────────────────────────────────────────
+function saveConfig() {
+  const cfg = {
+    orgName:         document.getElementById('orgName').value,
+    projectName:     document.getElementById('projectName').value,
+    teamName:        document.getElementById('teamName').value,
+    areaPath:        document.getElementById('areaPath').value,
+    queryFolderPath: (document.getElementById('queryFolderPath') || {}).value || '',
+    bugsFoundTag:    (document.getElementById('bugsFoundTagInput') || {}).value || '',
+    deferredTag:     (document.getElementById('deferredTagInput')  || {}).value || ''
+  };
+  localStorage.setItem('ado_qa_config', JSON.stringify(cfg));
+  toast('Config saved to browser ✓', 'success');
+}
+function loadConfig() {
+  try {
+    const cfg = JSON.parse(localStorage.getItem('ado_qa_config') || '{}');
+    if (cfg.orgName) document.getElementById('orgName').value = cfg.orgName;
+    if (cfg.projectName) document.getElementById('projectName').value = cfg.projectName;
+    if (cfg.teamName) {
+      document.getElementById('teamName').value = cfg.teamName;
+      onTeamChange(); // auto-fill area path
+    }
+    if (cfg.areaPath) document.getElementById('areaPath').value = cfg.areaPath;
+    if (cfg.bugsFoundTag) { const el = document.getElementById('bugsFoundTagInput'); if(el) el.value = cfg.bugsFoundTag; }
+    if (cfg.deferredTag)  { const el = document.getElementById('deferredTagInput');  if(el) el.value = cfg.deferredTag;  }
+    if (cfg.queryFolderPath) { const el = document.getElementById('queryFolderPath'); if(el) el.value = cfg.queryFolderPath; }
+    toast('Config loaded ✓', 'success');
+    updatePreviews();
+  } catch(e) { toast('No saved config found', 'error'); }
+}
+
+// ─────────────────────────────────────────────────────────
+// TEST CONNECTION
+// ─────────────────────────────────────────────────────────
+async function testConnection() {
+  const org  = document.getElementById('orgName').value.trim();
+  const proj = document.getElementById('projectName').value.trim();
+  const pat  = document.getElementById('patToken').value.trim();
+  if (!org || !proj || !pat) { toast('Fill in Org, Project and PAT first', 'error'); return; }
+
+  const statusEl = document.getElementById('connStatus');
+  const textEl   = document.getElementById('connText');
+  statusEl.className = 'conn-status';
+  textEl.textContent = 'Testing…';
+
+  try {
+    // Use Work Items fields — only needs Work Items: Read scope
+    const url = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj) + '/_apis/wit/fields?$top=1&api-version=7.1';
+    const r   = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+    if (r.ok) {
+      statusEl.className = 'conn-status connected';
+      textEl.textContent = 'Connected to ' + org + '/' + proj;
+      toast('Connection successful ✓', 'success');
+      // Show logged-in user badge
+      const authHdr = { 'Authorization': 'Basic ' + btoa(':' + pat) };
+      fetchLoggedInUser(org, pat, authHdr);
+      // Auto-load release versions if team already selected
+      const currentTeam = document.getElementById('teamName').value;
+      if (currentTeam) loadReleaseVersions(currentTeam);
+    } else {
+      statusEl.className = 'conn-status error';
+      textEl.textContent = 'Error ' + r.status + ' — check PAT/credentials';
+    }
+  } catch(e) {
+    statusEl.className = 'conn-status error';
+    textEl.textContent = 'Network error — check CORS/org name';
+  }
+}
+
+
+async function loadTeams(org, proj, pat) {
+  const spinner = document.getElementById('teamLoadingSpinner');
+  const select  = document.getElementById('teamSelect');
+  const input   = document.getElementById('teamName');
+  const hint    = document.getElementById('teamHint');
+
+  spinner.style.display = 'block';
+  hint.textContent = 'Loading teams…';
+
+  try {
+    // Try teams endpoint — may need Project & Team: Read scope
+    // If it fails, fall back to letting user type manually
+    const url  = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj) + '/_apis/teams?api-version=7.1-preview.3';
+    const resp = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+
+    if (!resp.ok) {
+      // Teams API needs extra scope — try alternate endpoint
+      const url2 = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/_apis/projects/' + encodeURIComponent(proj) + '/teams?$top=100&api-version=7.1';
+      const resp2 = await fetch(url2, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+      if (!resp2.ok) {
+        // Both failed — enable manual entry but still show connected
+        hint.textContent = 'Teams require "Project & Team: Read" scope in PAT — type team name manually.';
+        input.readOnly   = false;
+        input.style.background = '';
+        input.placeholder = 'e.g. surePrep-tcd-mavericks';
+        spinner.style.display = 'none';
+        // Still load area paths button
+        const loadApBtn = document.createElement('button');
+        loadApBtn.textContent = '⟳ Load Area Paths for this Team';
+        loadApBtn.className = 'btn btn-secondary';
+        loadApBtn.style.marginTop = '6px';
+        loadApBtn.style.fontSize = '12px';
+        loadApBtn.style.height = '30px';
+        loadApBtn.onclick = async () => {
+          const tn = input.value.trim();
+          if (!tn) { toast('Enter team name first', 'error'); return; }
+          await loadAreaPaths(org, proj, pat, tn);
+        };
+        hint.parentNode.insertBefore(loadApBtn, hint.nextSibling);
+        return;
+      }
+      const data2 = await resp2.json();
+      const teams = data2.value || [];
+      if (!teams.length) {
+        hint.textContent = 'No teams found — type manually.';
+        input.readOnly = false; input.style.background = '';
+        spinner.style.display = 'none'; return;
+      }
+      // Use these teams
+      _populateTeamDropdown(teams, select, input, hint, spinner, org, proj, pat);
+      return;
+    }
+
+    const data = await resp.json();
+    const teams = data.value || [];
+
+    if (teams.length === 0) {
+      hint.textContent = 'No teams found — type team name manually.';
+      input.readOnly = false;
+      input.style.background = '';
+      spinner.style.display = 'none';
+      return;
+    }
+
+    // Populate dropdown
+    select.innerHTML = '<option value="">-- Select Team --</option>';
+    teams.sort((a,b) => a.name.localeCompare(b.name)).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value       = t.name;           // API name e.g. surePrep-tcd-mavericks
+      opt.textContent = t.name;           // shown in dropdown
+      opt.dataset.id  = t.id;
+      select.appendChild(opt);
+    });
+
+    // Show dropdown, hide text input
+    select.style.display = 'block';
+    input.style.display  = 'none';
+    hint.textContent     = teams.length + ' teams loaded. Select your team.';
+    spinner.style.display = 'none';
+
+    // If saved config has a team, pre-select it
+    const saved = localStorage.getItem('ado_qa_config');
+    if (saved) {
+      try {
+        const cfg = JSON.parse(saved);
+        if (cfg.teamName) {
+          select.value = cfg.teamName;
+          if (select.value) await onTeamSelected();
+        }
+      } catch(e) {}
+    }
+
+    _populateTeamDropdown(teams, select, input, hint, spinner, org, proj, pat);
+  } catch(e) {
+    hint.textContent = 'Could not load teams: ' + e.message + ' — type manually.';
+    input.readOnly = false;
+    input.placeholder = 'e.g. surePrep-tcd-mavericks';
+    input.style.background = '';
+    spinner.style.display = 'none';
+  }
+}
+
+
+async function onTeamSelected() {
+  const select  = document.getElementById('teamSelect');
+  const input   = document.getElementById('teamName');
+  const teamName = select.value;
+  if (!teamName) return;
+
+  // Sync hidden input
+  input.value = teamName;
+
+  const org  = document.getElementById('orgName').value.trim();
+  const proj = document.getElementById('projectName').value.trim();
+  const pat  = document.getElementById('patToken').value.trim();
+
+  // Load area paths for selected team
+  await loadAreaPaths(org, proj, pat, teamName);
+}
+
+
+async function loadAreaPaths(org, proj, pat, teamName) {
+  const apSelect = document.getElementById('areaPathSelect');
+  const apInput  = document.getElementById('areaPath');
+  const apHint   = document.getElementById('areaHint');
+
+  apHint.textContent = 'Loading area paths for ' + teamName + '…';
+
+  try {
+    // Get team field values (area paths configured for team)
+    const url = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj)
+      + '/' + encodeURIComponent(teamName) + '/_apis/work/teamsettings/teamfieldvalues?api-version=7.1';
+    const resp = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+    const data = await resp.json();
+
+    const values = data.values || [];
+    const defaultVal = data.defaultValue || '';
+
+    if (values.length === 0 && !defaultVal) {
+      // Fallback: get all area paths for project
+      await loadAllAreaPaths(org, proj, pat, teamName);
+      return;
+    }
+
+    // Build area path list
+    const paths = [];
+    if (defaultVal) paths.push(defaultVal);
+    values.forEach(v => { if (v.value && !paths.includes(v.value)) paths.push(v.value); });
+
+    if (paths.length === 1) {
+      // Only one — auto-fill directly
+      apInput.value = paths[0];
+      apInput.style.display = 'block';
+      apSelect.style.display = 'none';
+      apHint.textContent = 'Area path auto-filled ✓';
+    } else {
+      // Multiple — show dropdown
+      apSelect.innerHTML = '<option value="">-- Select Area Path --</option>';
+      paths.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p; opt.textContent = p;
+        apSelect.appendChild(opt);
+      });
+      apSelect.style.display = 'block';
+      apInput.style.display  = 'none';
+      apHint.textContent = paths.length + ' area paths found. Select one.';
+      // Auto-select default
+      if (defaultVal) {
+        apSelect.value = defaultVal;
+        apInput.value  = defaultVal;
+      }
+    }
+  } catch(e) {
+    // Fallback to project area paths
+    await loadAllAreaPaths(org, proj, pat, teamName);
+  }
+}
+
+
+async function loadAllAreaPaths(org, proj, pat, teamName) {
+  const apSelect = document.getElementById('areaPathSelect');
+  const apInput  = document.getElementById('areaPath');
+  const apHint   = document.getElementById('areaHint');
+
+  try {
+    const url = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj)
+      + '/_apis/wit/classificationnodes/areas?$depth=5&api-version=7.1';
+    const resp = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat) } });
+    const data = await resp.json();
+
+    // Flatten all area paths
+    const paths = [];
+    function flattenAreas(node, prefix) {
+      const path = prefix ? prefix + '\\' + node.name : node.name;
+      paths.push(path);
+      (node.children || []).forEach(c => flattenAreas(c, path));
+    }
+    flattenAreas(data, '');
+
+    // Filter paths containing team name (fuzzy)
+    const teamShort = teamName.split('-').pop().toLowerCase();
+    const filtered  = paths.filter(p => p.toLowerCase().includes(teamShort));
+    const showPaths = filtered.length > 0 ? filtered : paths.slice(0, 30);
+
+    apSelect.innerHTML = '<option value="">-- Select Area Path --</option>';
+    showPaths.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p; opt.textContent = p;
+      apSelect.appendChild(opt);
+    });
+    apSelect.style.display = 'block';
+    apInput.style.display  = 'none';
+    apHint.textContent = showPaths.length + ' area paths. Select one.';
+  } catch(e) {
+    apInput.readOnly = false;
+    apInput.style.background = '';
+    apInput.style.display = 'block';
+    apSelect.style.display = 'none';
+    apHint.textContent = 'Could not load area paths — type manually.';
+  }
+}
+
+
+function onAreaPathSelected() {
+  const select = document.getElementById('areaPathSelect');
+  const input  = document.getElementById('areaPath');
+  input.value  = select.value;
+}
+
+// ─────────────────────────────────────────────────────────
+// TEAM DISPLAY NAME (global helper)
+// ─────────────────────────────────────────────────────────
+function getTeamDisplayName(teamName) {
+  let name = teamName || 'Team';
+  name = name.replace(/^surePrep-tcd-/i, '')
+             .replace(/^taxcaddy-team-/i, '')
+             .replace(/^surePrepTcd/i, '')
+             .replace(/^[-_]/, '');
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// ─────────────────────────────────────────────────────────
+// MAIN: RUN ALL
+// ─────────────────────────────────────────────────────────
+async function runAll() {
+  // Read inputs
+  state.orgName     = document.getElementById('orgName').value.trim();
+  state.projectName = document.getElementById('projectName').value.trim();
+  state.teamName    = document.getElementById('teamName').value.trim();
+  state.areaPath    = document.getElementById('areaPath').value.trim();
+  const qfEl = document.getElementById('queryFolderPath');
+  state.queryFolderPath = (qfEl ? qfEl.value.trim() : '') || 'My Queries';
+  state.rvFieldName = 'Custom.ReleaseVersion'; // ADO internal field for Release Version
+  state.pat         = document.getElementById('patToken').value.trim();
+  state.releaseVersion = document.getElementById('releaseVersion').value.trim();
+  state.tag         = tagify(state.releaseVersion);
+
+  // ── Read user-provided tags (override auto-generated ones) ──
+  const bfTagEl  = document.getElementById('bugsFoundTagInput');
+  const defTagEl = document.getElementById('deferredTagInput');
+  const userBugsFoundTag  = bfTagEl  ? bfTagEl.value.trim()  : '';
+  const userDeferredTag   = defTagEl ? defTagEl.value.trim()  : '';
+
+  state.teamDisplayName = getTeamDisplayName(state.teamName);
+
+  // ── BugsFoundIN tag: BugsFoundIN_{Month}_{Version} ──
+  // Extract everything after the team display name in the tag
+  // e.g. TC_26_Knights_June_10.5.0 → BugsFoundIN_June_10.5.0
+  // e.g. TC_26_Mavericks_June_10.5.0 → BugsFoundIN_June_10.5.0
+  const teamTagPattern = new RegExp(state.teamDisplayName + '[_ ]*', 'i');
+  const tagAfterTeam   = state.tag.split(teamTagPattern);
+  const monthVersion   = tagAfterTeam.length > 1
+    ? tagAfterTeam[tagAfterTeam.length-1].replace(/^_+/,'')
+    : state.tag;
+  state.bugsFoundTag = userBugsFoundTag || ('BugsFoundIN_' + monthVersion);
+  // Deferred tag — user can override, default uses team display name + tag
+  state.deferredTag  = userDeferredTag  || ('Deferred_' + state.teamDisplayName + '_' + state.tag);
+  state.today       = getToday();
+  state.createdQueries = {};
+  state.dashboardId = '';
+  state.dashboardUrl = '';
+
+  if (!state.orgName || !state.projectName || !state.pat) {
+    toast('Please fill in Org, Project, and PAT in the sidebar', 'error'); return;
+  }
+  if (!state.releaseVersion) {
+    toast('Please enter a Release Version', 'error'); return;
+  }
+
+  document.getElementById('generateBtn').disabled = true;
+  document.getElementById('resultsCard').classList.remove('visible');
+
+  // Build step list
+  const steps = [
+    { label: 'Verify ADO connection', id: 'step_conn' },
+    { label: 'Create shared query folder', id: 'step_folder' },
+    ...QUERY_DEFS.map(q => ({ label: `Create query: ${q.name()}`, id: `step_q_${q.key}` })),
+    { label: 'Create dashboard', id: 'step_dash' },
+    { label: 'Add dashboard widgets', id: 'step_widgets' },
+    { label: 'Generate & download PPT', id: 'step_ppt' }
+  ];
+
+  const pc = document.getElementById('progressCard');
+  pc.classList.add('visible');
+  document.getElementById('stepRows').innerHTML = steps.map((s, i) => `
+    <div class="step-row">
+      <div class="step-icon" id="step-icon-${i}">${i+1}</div>
+      <div>
+        <div class="step-label">${s.label}</div>
+        <div class="step-detail" id="step-detail-${i}">Waiting…</div>
+      </div>
+    </div>`).join('');
+
+  pc.scrollIntoView({ behavior: 'smooth' });
+
+  let stepIdx = 0;
+  const errors = [];
+
+  // ── STEP 0: Verify connection + discover custom field names
+  setStep(stepIdx, 'running', 'Pinging ADO…');
+  try {
+    await adoFetch('http://localhost:4000/ado-proxy/' + encodeURIComponent(state.orgName) + '/_apis/projects?api-version=7.1', 'GET');
+    setStep(stepIdx, 'running', 'Discovering custom field names…');
+
+    // Auto-discover custom field reference names for TR WOW fields
+    // This prevents TF51005 errors by using actual field names from your ADO process
+    try {
+      const fieldsData = await adoFetch(
+        adoBase() + '/_apis/wit/fields?api-version=7.1', 'GET'
+      );
+      const fields = fieldsData.value || [];
+      const findField = (keywords) => {
+        const kw = keywords.map(k => k.toLowerCase());
+        const match = fields.find(f =>
+          kw.every(k => (f.name || '').toLowerCase().includes(k)) ||
+          kw.every(k => (f.referenceName || '').toLowerCase().includes(k))
+        );
+        return match ? match.referenceName : null;
+      };
+
+      // Use exact name match for Priority/Severity to avoid matching "ASD A11Y Priority" etc.
+      const findExact = (name) => {
+        const match = fields.find(f => (f.name || '').toLowerCase() === name.toLowerCase());
+        return match ? match.referenceName : null;
+      };
+      state.fieldPriority   = findExact('Priority')  || 'Microsoft.VSTS.Common.Priority';
+      state.fieldSeverity   = findExact('Severity')  || 'Microsoft.VSTS.Common.Severity';
+      state.fieldEnv        = findField(['tr', 'wow', 'env'])      || findField(['environment'])  || null;
+      state.fieldRootCause  = findField(['tr', 'wow', 'root'])     || findField(['root', 'cause']) || null;
+      state.fieldRCA        = findField(['root', 'cause', 'anal']) || findField(['rca'])           || null;
+      state.fieldDefectReason = findField(['defect', 'reason'])    || findField(['reason'])        || null;
+
+      const found = [state.fieldEnv, state.fieldRootCause, state.fieldRCA, state.fieldDefectReason]
+        .filter(Boolean).length;
+      setStep(stepIdx, 'done', 'Connected to <strong>' + state.orgName + '</strong> · ' + found + ' custom fields discovered');
+    } catch(fe) {
+      // Field discovery failed — continue without custom fields
+      state.fieldPriority = 'Microsoft.VSTS.Common.Priority';
+      state.fieldSeverity = 'Microsoft.VSTS.Common.Severity';
+      state.fieldEnv = null; state.fieldRootCause = null;
+      state.fieldRCA = null; state.fieldDefectReason = null;
+      setStep(stepIdx, 'done', 'Connected to <strong>' + state.orgName + '</strong> (custom fields not discovered)');
+    }
+  } catch(e) {
+    setStep(stepIdx, 'error', 'Failed: ' + e.message);
+    toast('Connection failed — check PAT and org name', 'error');
+    document.getElementById('generateBtn').disabled = false;
+    return;
+  }
+  stepIdx++;
+
+  // ── STEP 1: Create release subfolder under user-configured parent path ──
+  setStep(stepIdx, 'running', 'Finding query folder in ADO…');
+  let folderId = null;
+  try {
+    const releaseFolderName = state.teamDisplayName + ' ' + state.releaseVersion + ' Release';
+    const parentPath = state.queryFolderPath || 'My Queries';
+    // Encode the parent path for ADO API (spaces → %20)
+    const encodedParent = parentPath.split('/').map(p => encodeURIComponent(p)).join('/');
+    let parentFolderId = null;
+
+    // Step A: GET the parent folder by path to get its ID
+    try {
+      const parentFolder = await adoFetch(
+        adoBase() + '/_apis/wit/queries/' + encodedParent + '?api-version=7.1',
+        'GET'
+      );
+      parentFolderId = parentFolder.id;
+      setStep(stepIdx, 'running', 'Found folder "' + parentPath + '" — creating subfolder…');
+    } catch(pe) {
+      setStep(stepIdx, 'error', 'Folder "' + parentPath + '" not found: ' + pe.message + '. Queries will go to My Queries root.');
+      // Fallback: use My Queries root
+      try {
+        const myQ = await adoFetch(adoBase() + '/_apis/wit/queries/My%20Queries?api-version=7.1', 'GET');
+        parentFolderId = myQ.id;
+      } catch(me) { parentFolderId = null; }
+    }
+
+    if (parentFolderId) {
+      // Step B: Check if release subfolder already exists
+      try {
+        const checkPath = encodedParent + '/' + encodeURIComponent(releaseFolderName);
+        const existing = await adoFetch(
+          adoBase() + '/_apis/wit/queries/' + checkPath + '?api-version=7.1',
+          'GET'
+        );
+        folderId = existing.id;
+        setStep(stepIdx, 'done', 'Folder exists: <strong>' + releaseFolderName + '</strong>');
+      } catch(ce) {
+        // Create it
+        const newFolder = await adoFetch(
+          adoBase() + '/_apis/wit/queries/' + parentFolderId + '?api-version=7.1',
+          'POST',
+          { name: releaseFolderName, isFolder: true, children: [] }
+        );
+        folderId = newFolder.id;
+        setStep(stepIdx, 'done', 'Folder created: <strong>' + parentPath + ' → ' + releaseFolderName + '</strong>');
+      }
+    }
+  } catch(e) {
+    setStep(stepIdx, 'error', 'Folder error: ' + e.message);
+  }
+  stepIdx++;
+
+  // ── STEPS 2-7: Create queries inside the release folder ──
+  for (const qDef of QUERY_DEFS) {
+    setStep(stepIdx, 'running', 'Creating query…');
+    try {
+      const name = qDef.name();
+      const wiql = qDef.wiql();
+
+      let qData = null;
+
+      // Try to create. If duplicate name (TF237018), fetch the existing query instead.
+      const endpoint = folderId
+        ? adoBase() + '/_apis/wit/queries/' + folderId + '?api-version=7.1'
+        : adoBase() + '/_apis/wit/queries/Shared%20Queries?api-version=7.1';
+
+      try {
+        qData = await adoFetch(endpoint, 'POST', { name, wiql, isFolder: false });
+      } catch(createErr) {
+        if (createErr.message.includes('TF237018') || createErr.message.includes('same name')) {
+          // Query already exists — find it by listing the folder
+          setStep(stepIdx, 'running', 'Query exists, fetching existing…');
+          try {
+            const folderContents = await adoFetch(
+              adoBase() + '/_apis/wit/queries/' + folderId + '?$depth=1&$expand=all&api-version=7.1',
+              'GET'
+            );
+            const existing = (folderContents.children || []).find(q => q.name === name);
+            if (existing) {
+              qData = existing;
+            } else {
+              // Update WIQL of existing query with same name via PATCH
+              const allShared = await adoFetch(
+                adoBase() + '/_apis/wit/queries/Shared%20Queries?$depth=2&$expand=all&api-version=7.1',
+                'GET'
+              );
+              const found = findQueryByName(allShared, name);
+              if (found) {
+                // Update with fresh WIQL
+                await adoFetch(adoBase() + '/_apis/wit/queries/' + found.id + '?api-version=7.1', 'PATCH', { wiql });
+                qData = found;
+              }
+            }
+          } catch(findErr) {
+            throw new Error('Duplicate & could not find existing: ' + findErr.message);
+          }
+        } else {
+          throw createErr;
+        }
+      }
+
+      if (!qData || !qData.id) throw new Error('Could not get query ID');
+      const qId = qData.id;
+      const qUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_queries/query/' + qId + '/';
+      state.createdQueries[qDef.key] = { id: qId, url: qUrl, name };
+      setStep(stepIdx, 'done', '<a href="' + qUrl + '" target="_blank">' + name + ' ↗</a>');
+    } catch(e) {
+      setStep(stepIdx, 'error', 'Failed: ' + e.message);
+      errors.push(qDef.key);
+    }
+    stepIdx++;
+  }
+
+  // ── STEP: Create dashboard ──
+  setStep(stepIdx, 'running', 'Creating dashboard…');
+  // ADO max dashboard name = 32 chars
+  // Dashboard name = exactly the Release Version the user entered (max 64 chars)
+  const dashName = state.releaseVersion.substring(0, 64).trim();
+  try {
+    // Team dashboard with 5-min auto-refresh, under the user's team
+    const dashBody = {
+      name: dashName,
+      refreshInterval: 5,           // auto-refresh every 5 minutes
+      _links: {},
+      position: 0
+    };
+    // ADO dashboard API needs team context: /{org}/{project}/{team}/_apis/dashboard/...
+    const dashUrl = 'http://localhost:4000/ado-proxy/' + state.orgName + '/' + state.projectName + '/' + encodeURIComponent(state.teamName) + '/_apis/dashboard/dashboards?api-version=7.1-preview.3';
+    let dashData;
+    try {
+      dashData = await adoFetch(dashUrl, 'POST', dashBody);
+      state.dashboardId = dashData.id;
+      // Store base URL pattern so widgets use the SAME team-scoped path
+      state.dashboardApiBase = 'http://localhost:4000/ado-proxy/' + state.orgName + '/' + state.projectName + '/' + encodeURIComponent(state.teamName) + '/_apis/dashboard/dashboards/' + dashData.id;
+      state.dashboardUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_dashboards/dashboard/' + dashData.id;
+      setStep(stepIdx, 'done', '<a href="' + state.dashboardUrl + '" target="_blank">' + dashName + ' ↗</a>');
+    } catch(de) {
+      // Try without team in path (some ADO orgs use different structure)
+      try {
+        const dashUrl2 = adoBase() + '/_apis/dashboard/dashboards?api-version=7.1-preview.3';
+        dashData = await adoFetch(dashUrl2, 'POST', { ...dashBody, ownerId: state.teamName });
+        state.dashboardId = dashData.id;
+        state.dashboardApiBase = adoBase() + '/_apis/dashboard/dashboards/' + dashData.id;
+        state.dashboardUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_dashboards/dashboard/' + dashData.id;
+        setStep(stepIdx, 'done', '<a href="' + state.dashboardUrl + '" target="_blank">' + dashName + ' ↗</a>');
+      } catch(de2) {
+        setStep(stepIdx, 'error', 'Dashboard API error: ' + de2.message + ' — create manually in ADO');
+        state.dashboardUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_dashboards';
+        errors.push('dashboard');
+      }
+    }
+  } catch(e) {
+    setStep(stepIdx, 'error', 'Dashboard failed: ' + e.message);
+    state.dashboardUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_dashboards';
+    errors.push('dashboard');
+  }
+  stepIdx++;
+
+  // ── STEP: Add widgets ──
+  setStep(stepIdx, 'running', 'Adding widgets to dashboard…');
+  let widgetsAdded = 0;
+  const widgetErrors = [];
+
+  if (state.dashboardId) {
+    // Try to read an existing working dashboard to get the exact widget settings format
+    let templateWidgets = {};
+    try {
+      // List all dashboards to find one with working chart widgets
+      const dashListUrl = 'http://localhost:4000/ado-proxy/' + state.orgName + '/' + state.projectName
+        + '/' + encodeURIComponent(state.teamName)
+        + '/_apis/dashboard/dashboards?api-version=7.1-preview.3';
+      const dashList = await adoFetch(dashListUrl, 'GET');
+      const allDashes = dashList.dashboardEntries || dashList.value || [];
+
+      // Find a dashboard that is NOT the one we just created
+      const refDash = allDashes.find(d => d.id !== state.dashboardId);
+      if (refDash) {
+        const refUrl = 'http://localhost:4000/ado-proxy/' + state.orgName + '/' + state.projectName
+          + '/' + encodeURIComponent(state.teamName)
+          + '/_apis/dashboard/dashboards/' + refDash.id + '/widgets?api-version=7.1-preview.2';
+        const refWidgets = await adoFetch(refUrl, 'GET');
+        const widgets = refWidgets.value || [];
+        // Store template by contributionId type
+        widgets.forEach(w => {
+          if (w.contributionId && w.contributionId.includes('WitChart') && !templateWidgets.chart) {
+            templateWidgets.chart = w;
+          }
+          if (w.contributionId && w.contributionId.includes('QueryScalar') && !templateWidgets.scalar) {
+            templateWidgets.scalar = w;
+          }
+          if (w.contributionId && w.contributionId.includes('QueryResult') && !templateWidgets.result) {
+            templateWidgets.result = w;
+          }
+        });
+        console.log('Template widgets found:', Object.keys(templateWidgets));
+      }
+    } catch(te) {
+      console.warn('Could not read template dashboard:', te.message);
+    }
+
+    const apiBase = state.dashboardApiBase ||
+      ('http://localhost:4000/ado-proxy/' + state.orgName + '/' + state.projectName + '/'
+      + encodeURIComponent(state.teamName)
+      + '/_apis/dashboard/dashboards/' + state.dashboardId);
+    const widgetUrl = apiBase + '/widgets?api-version=7.1-preview.2';
+
+    for (const w of WIDGET_DEFS) {
+      try {
+        const qInfo = state.createdQueries[w.queryKey];
+        const qId   = qInfo ? qInfo.id   : null;
+        const qName = qInfo ? qInfo.name : w.title;
+        const wTitle = typeof w.title === 'function' ? w.title() : w.title;
+
+        let wBody;
+
+        if (w.contributionId.includes('WitChartWidget') && templateWidgets.chart) {
+          // Use template widget settings — just swap queryId, queryName, groupKey, title
+          const tmpl = JSON.parse(templateWidgets.chart.settings || '{}');
+          tmpl.queryId   = qId   || tmpl.queryId;
+          tmpl.queryName = qName || tmpl.queryName;
+          tmpl.title     = wTitle;
+          tmpl.groupKey  = w.groupBy || tmpl.groupKey;
+          tmpl.chartType = w.chartType || tmpl.chartType;
+          if (tmpl.transformOptions) {
+            tmpl.transformOptions.filter  = qId || tmpl.transformOptions.filter;
+            tmpl.transformOptions.groupBy = w.groupBy || tmpl.transformOptions.groupBy;
+          }
+          wBody = {
+            name:           wTitle,
+            contributionId: templateWidgets.chart.contributionId,
+            position:       { row: w.row || 0, column: w.col || 0 },
+            size:           { rowSpan: w.rowSpan || 2, columnSpan: w.colSpan || 2 },
+            settings:       JSON.stringify(tmpl)
+          };
+        } else {
+          wBody = buildWidget(w, qInfo, state.releaseVersion);
+        }
+
+        const result = await adoFetch(widgetUrl, 'POST', wBody);
+        if (result && result.id) {
+          widgetsAdded++;
+        } else {
+          widgetErrors.push(wTitle + ': no id');
+        }
+      } catch(we) {
+        widgetErrors.push((w.title || '?') + ': ' + we.message.substring(0, 120));
+        console.error('Widget failed:', w.title, we.message);
+      }
+    }
+  }
+
+  const scalarCount = WIDGET_DEFS.filter(w => w.contributionId.includes('QueryScalar')).length;
+  if (widgetsAdded >= scalarCount) {
+    // At least count tiles added — check if charts also worked
+    const chartsMissing = WIDGET_DEFS.length - widgetsAdded;
+    if (chartsMissing === 0) {
+      setStep(stepIdx, 'done', '8 of 8 widgets added ✓');
+    } else {
+      // Count tiles work, charts need manual addition
+      setStep(stepIdx, 'done',
+        widgetsAdded + ' of ' + WIDGET_DEFS.length + ' widgets added. ' +
+        chartsMissing + ' chart widgets need manual addition — see instructions below ↓');
+      // Store flag so results section shows manual widget instructions
+      state.showManualWidgetGuide = true;
+      state.missingWidgets = WIDGET_DEFS
+        .filter(w => !w.contributionId.includes('QueryScalar'))
+        .map(w => ({ title: typeof w.title === 'function' ? w.title() : w.title,
+                     queryKey: w.queryKey, chartType: w.chartType || '', groupBy: w.groupBy || '' }));
+    }
+  } else {
+    setStep(stepIdx, 'error', 'Widgets failed: ' + widgetErrors.slice(0,2).join(' | '));
+  }
+  stepIdx++;
+
+  // ── STEP: Fetch query data + build charts + generate PPT ──
+  setStep(stepIdx, 'running', 'Fetching query data for PPT…');
+  try {
+    const counts = {};
+    const queryKeys = ['totalFixed', 'bugsFound', 'bugsFoundFixed', 'openBugs', 'deferredBugs'];
+
+    // Helper: run a saved query and return work item IDs
+    async function runQuery(qId) {
+      try {
+        const r = await adoFetch(adoBase() + '/_apis/wit/wiql/' + qId + '?api-version=7.1', 'GET');
+        return (r.workItems || []).map(w => w.id);
+      } catch(e) { return []; }
+    }
+
+    // Helper: fetch work item details in batches of 200
+    async function fetchWorkItems(ids) {
+      if (!ids.length) return [];
+      const prio  = state.fieldPriority  || 'Microsoft.VSTS.Common.Priority';
+      const sev   = state.fieldSeverity  || 'Microsoft.VSTS.Common.Severity';
+      const env   = state.fieldEnv       || '';
+      const rc    = state.fieldRootCause || '';
+      const fields = ['System.Id','System.Title',prio,sev,env,rc].filter(Boolean);
+      const batches = [];
+      for (let i = 0; i < ids.length; i += 200) batches.push(ids.slice(i, i+200));
+      let items = [];
+      for (const batch of batches) {
+        try {
+          const r = await adoFetch(
+            adoBase() + '/_apis/wit/workitemsbatch?api-version=7.1',
+            'POST',
+            { ids: batch, fields }
+          );
+          items = items.concat(r.value || []);
+        } catch(e) {}
+      }
+      return items;
+    }
+
+    // Fetch counts for all queries
+    for (const key of queryKeys) {
+      const qInfo = state.createdQueries[key];
+      if (qInfo && qInfo.id) {
+        const ids = await runQuery(qInfo.id);
+        counts[key] = ids.length;
+        // For totalFixed — fetch full details to build charts
+        if (key === 'totalFixed') {
+          state.totalFixedItems = await fetchWorkItems(ids);
+        }
+      } else {
+        counts[key] = 0;
+      }
+    }
+
+    state.queryCounts = counts;
+    setStep(stepIdx, 'running', 'Building charts from ' + (state.totalFixedItems||[]).length + ' work items…');
+    await buildAndDownloadPPT();
+    setStep(stepIdx, 'done', 'PPT downloaded ✓  Fixed=' + (counts.totalFixed||0) + '  Found=' + (counts.bugsFound||0) + '  Open=' + (counts.openBugs||0) + '  Deferred=' + (counts.deferredBugs||0));
+  } catch(e) {
+    setStep(stepIdx, 'error', 'PPT generation failed: ' + e.message);
+    errors.push('ppt');
+  }
+
+  // ── SHOW RESULTS
+  showResults(errors);
+  document.getElementById('generateBtn').disabled = false;
+}
+
+// ─────────────────────────────────────────────────────────
+// BUILD WIQL
+// ─────────────────────────────────────────────────────────
+function buildWIQL(clauses) {
+  const parts = clauses.map((c, i) => {
+    const and = i === 0 ? '' : 'AND ';
+    const field = `[System.${c.field.replace(/ /g,'')}]`;
+    if (c.op === 'Contains') return `${and}${field} Contains '${c.value}'`;
+    return `${and}${field} = '${c.value}'`;
+  });
+  return `SELECT [System.Id],[System.WorkItemType],[System.Title],[System.AssignedTo],[System.State],[System.Tags],[Microsoft.VSTS.Common.Priority],[Microsoft.VSTS.Common.Severity] FROM WorkItems WHERE ${parts.join(' ')} ORDER BY [System.ChangedDate] DESC`;
+}
+
+// ─────────────────────────────────────────────────────────
+// BUILD WIDGET BODY
+// ─────────────────────────────────────────────────────────
+function buildWidget(w, qInfo, releaseVersion) {
+  const qId   = qInfo ? qInfo.id   : null;
+  const qName = qInfo ? qInfo.name : w.title;
+  const widgetTitle = typeof w.title === 'function' ? w.title() : w.title;
+  let settings = {};
+
+  if (w.contributionId.includes('WitChartWidget')) {
+    // Chart for Work Items — exact format from ADO UI inspection
+    const chartType  = w.chartType  || 'ColumnChart';
+    const groupBy    = w.groupBy    || 'System.WorkItemType';
+    const sortDir    = w.sortOrder  || 'descending';
+    settings = {
+      queryId:   qId   || '',
+      queryName: qName,
+      chartType: chartType,
+      scope:     'WorkitemTracking.Queries',
+      title:     widgetTitle,
+      groupKey:  groupBy,
+      transformOptions: {
+        filter:       qId || '',
+        groupBy:      groupBy,
+        orderBy:      { propertyName: 'value', direction: sortDir },
+        measure:      { propertyName: 'count', aggregation: 'count' },
+        historyRange: null
+      },
+      userColors:             [],
+      colorCustomizationData: [],
+      lastArtifactName:       qName
+    };
+
+  } else if (w.contributionId.includes('QueryScalarWidget')) {
+    settings = {
+      queryId:    qId || '',
+      queryName:  qName,
+      colorRules: w.color ? [{
+        isEnabled: true,
+        backgroundColor: '#' + w.color,
+        fontColor: '#ffffff',
+        operator: 'GreaterThanOrEqual',
+        thresholdCount: 0
+      }] : []
+    };
+
+  } else if (w.contributionId.includes('QueryResultWidget')) {
+    settings = {
+      queryId:   qId  || '',
+      queryName: qName,
+      columnOptions: [
+        { fieldName: 'System.Id',                        width: 60  },
+        { fieldName: 'System.WorkItemType',               width: 90  },
+        { fieldName: 'System.Title',                      width: 280 },
+        { fieldName: 'System.AssignedTo',                 width: 140 },
+        { fieldName: 'System.State',                      width: 80  },
+        { fieldName: 'Microsoft.VSTS.Common.Priority',    width: 70  },
+        { fieldName: 'Microsoft.VSTS.Common.Severity',    width: 80  },
+        { fieldName: 'System.Tags',                       width: 120 }
+      ]
+    };
+  }
+
+  return {
+    name:           widgetTitle,
+    contributionId: w.contributionId,
+    position:       { row: w.row || 0, column: w.col || 0 },
+    size:           { rowSpan: w.rowSpan || 1, columnSpan: w.colSpan || 2 },
+    settings:       JSON.stringify(settings)
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// FIND FOLDER IN TREE
+// ─────────────────────────────────────────────────────────
+function findQueryByName(node, name) {
+  if (!node) return null;
+  if (node.name === name && !node.isFolder) return node;
+  const kids = node.children || node.value || [];
+  for (const c of kids) {
+    const r = findQueryByName(c, name);
+    if (r) return r;
+  }
+  return null;
+}
+function findFolder(node, name) {
+  if (node.name === name && node.isFolder) return node.id;
+  if (node.children) {
+    for (const c of node.children) {
+      const r = findFolder(c, name);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+// Deep search that also checks hasChildren and isFolder loosely
+function findFolderDeep(node, name) {
+  if (!node) return null;
+  if (node.name === name && (node.isFolder || node.wiql === undefined)) return node.id;
+  const kids = node.children || node.value || [];
+  for (const c of kids) {
+    const r = findFolderDeep(c, name);
+    if (r) return r;
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────
+// SHOW RESULTS
+// ─────────────────────────────────────────────────────────
+function showResults(errors) {
+  const rc = document.getElementById('resultsCard');
+  rc.classList.add('visible');
+
+  const qCount = Object.keys(state.createdQueries).length;
+  document.getElementById('resultsGrid').innerHTML = `
+    <div class="result-tile ${qCount>=6?'success':''}">
+      <div class="rt-icon">📋</div>
+      <div class="rt-num">${qCount}</div>
+      <div class="rt-label">Queries Created</div>
+    </div>
+    <div class="result-tile ${state.dashboardId?'success':''}">
+      <div class="rt-icon">📊</div>
+      <div class="rt-num">${state.dashboardId ? '1' : '0'}</div>
+      <div class="rt-label">Dashboard Created</div>
+    </div>
+    <div class="result-tile success">
+      <div class="rt-icon">📑</div>
+      <div class="rt-num">1</div>
+      <div class="rt-label">PPT Downloaded</div>
+    </div>
+    <div class="result-tile ${errors.length===0?'success':''}">
+      <div class="rt-icon">${errors.length===0?'✅':'⚠️'}</div>
+      <div class="rt-num">${errors.length}</div>
+      <div class="rt-label">Errors</div>
+    </div>`;
+
+  let links = '';
+  if (state.dashboardUrl) {
+    links += `<div class="link-row"><div class="link-icon">📊</div><div><strong>Dashboard:</strong> <a href="${state.dashboardUrl}" target="_blank">Open Dashboard for ${state.teamDisplayName} ${state.releaseVersion} Release ↗</a></div></div>`;
+  }
+  Object.values(state.createdQueries).forEach(q => {
+    if (q.url) {
+      links += `<div class="link-row"><div class="link-icon">🔍</div><div><a href="${q.url}" target="_blank">${q.name} ↗</a></div></div>`;
+    }
+  });
+  document.getElementById('linksSection').innerHTML = links;
+  rc.scrollIntoView({ behavior: 'smooth' });
+
+  // Show manual widget guide if chart widgets failed
+  if (state.showManualWidgetGuide && state.missingWidgets) {
+    document.getElementById('manualWidgetGuide').style.display = 'block';
+    const missing = state.missingWidgets;
+    const widgetGuideMap = {
+      'bugsFound':     { query: 'Bugs Found in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',      type: 'Column', groupBy: 'Priority / Severity' },
+      'totalWorkItems':{ query: 'Total Work Items in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release', type: 'Pie',    groupBy: 'Work Item Type' },
+      'totalFixed':    { query: 'Total Bug Fixed in ' + state.teamDisplayName + ' ' + state.releaseVersion + ' release',  type: 'Table',  groupBy: '-' }
+    };
+    const rows = [
+      { title:'Defect by Priority',  query: widgetGuideMap.bugsFound.query,      chart:'Column', group:'Microsoft.VSTS.Common.Priority' },
+      { title:'Defect by Severity',  query: widgetGuideMap.bugsFound.query,      chart:'Column', group:'Microsoft.VSTS.Common.Severity' },
+      { title:'Total Work Items',    query: widgetGuideMap.totalWorkItems.query,  chart:'Pie',    group:'System.WorkItemType' },
+      { title:'Bug List',            query: widgetGuideMap.totalFixed.query,      chart:'Query Results', group:'-' }
+    ];
+    document.getElementById('manualWidgetList').innerHTML = rows.map((r,i) =>
+      '<div style="background:white;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:6px;">' +
+      '<strong>' + (i+1) + '. ' + r.title + '</strong><br>' +
+      '&nbsp;&nbsp;Query: <code style="background:#f5f5f5;padding:1px 5px;border-radius:3px;">' + r.query + '</code><br>' +
+      '&nbsp;&nbsp;Chart type: <strong>' + r.chart + '</strong>' +
+      (r.group !== '-' ? ' &nbsp;|&nbsp; Group by: <strong>' + r.group + '</strong>' : '') +
+      '</div>'
+    ).join('');
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// GENERATE PPT
+// ─────────────────────────────────────────────────────────
+async function buildAndDownloadPPT() {
+  if (typeof PptxGenJS === 'undefined') {
+    for (let i = 0; i < 80; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (typeof PptxGenJS !== 'undefined') break;
+    }
+  }
+  if (typeof PptxGenJS === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    }).catch(() => {});
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  if (typeof PptxGenJS === 'undefined') throw new Error('PptxGenJS could not be loaded.');
+
+  const counts    = state.queryCounts || {};
+  const cFixed    = counts.totalFixed     || 0;
+  const cFound    = counts.bugsFound      || 0;
+  const cFF       = counts.bugsFoundFixed || 0;
+  const cOpen     = counts.openBugs       || 0;
+  const cDeferred = counts.deferredBugs   || 0;
+  const qU = {};
+  for (const [k,v] of Object.entries(state.createdQueries || {})) qU[k] = v.url || '';
+
+  // ── Build chart data from work items ──
+  const items = state.totalFixedItems || [];
+  const prioField = state.fieldPriority  || 'Microsoft.VSTS.Common.Priority';
+  const sevField  = state.fieldSeverity  || 'Microsoft.VSTS.Common.Severity';
+  const envField  = state.fieldEnv       || '';
+  const rcField   = state.fieldRootCause || '';
+
+  function groupBy(field) {
+    const map = {};
+    items.forEach(item => {
+      // For Priority: field value is integer (1,2,3,4) — convert to string
+      let val = (item.fields && item.fields[field] !== undefined && item.fields[field] !== null)
+        ? String(item.fields[field])
+        : null;
+      if (!val || val === 'null' || val === 'undefined') return; // skip blanks
+      map[val] = (map[val] || 0) + 1;
+    });
+    // Sort numerically if all keys are numbers, else alphabetically
+    const keys = Object.keys(map);
+    const allNum = keys.every(k => !isNaN(k));
+    return keys.sort(allNum ? (a,b) => Number(a)-Number(b) : (a,b) => a.localeCompare(b))
+               .map(k => [k, map[k]]);
+  }
+
+  function toChartData(grouped, seriesName) {
+    if (!grouped.length) return [{ name: seriesName, labels: ['No Data'], values: [0] }];
+    return [{ name: seriesName, labels: grouped.map(g => String(g[0])), values: grouped.map(g => g[1]) }];
+  }
+
+  const priorityData = toChartData(groupBy(prioField), 'Count');
+  const severityData = toChartData(groupBy(sevField),  'Count');
+  const envData      = envField ? toChartData(groupBy(envField), 'Count') : toChartData([['No Data',0]], 'Count');
+  const rcData       = rcField  ? toChartData(groupBy(rcField),  'Count') : toChartData([['No Data',0]], 'Count');
+
+  const rv   = state.releaseVersion;
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: 'CUSTOM', width: 13.33, height: 7.5 });
+  pptx.layout = 'CUSTOM';
+  const W = 13.33, H = 7.5;
+
+  const WHITE  = 'FFFFFF';
+  const TEAL   = '70AD47';
+  const BLUE   = '0563C1';
+  const BLACK  = '000000';
+  const DGRAY  = '595959';
+  const BORDER = 'BFBFBF';
+  const CHARTBLUE = '4472C4';
+
+  const slide = pptx.addSlide();
+  slide.addShape(pptx.shapes.RECTANGLE, { x:0, y:0, w:W, h:H, fill:{color:WHITE}, line:{color:WHITE} });
+
+  // ── TITLE ──
+  slide.addText(
+    'Test Summary Closure Report for TaxCaddy ' + state.teamDisplayName + ' ' + rv + ' Release(' + state.today + ')',
+    { x:0.2, y:0.1, w:W-3.8, h:0.32, fontSize:13, bold:true, color:BLACK, fontFace:'Calibri', valign:'middle', wrap:true }
+  );
+
+  // ── OVERALL STATUS top right ──
+  slide.addText('Overall Status:', { x:W-3.4, y:0.1, w:1.6, h:0.32, fontSize:10, bold:true, color:BLACK, fontFace:'Calibri', valign:'middle', align:'right' });
+  slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, { x:W-1.75, y:0.08, w:1.55, h:0.36, fill:{color:TEAL}, line:{color:TEAL}, rectRadius:0.05 });
+  slide.addText('Completed', { x:W-1.75, y:0.08, w:1.55, h:0.36, fontSize:10, bold:true, color:WHITE, align:'center', valign:'middle', fontFace:'Calibri' });
+
+  slide.addShape(pptx.shapes.LINE, { x:0, y:0.52, w:W, h:0, line:{color:BORDER, width:1} });
+
+  // ── KEY MESSAGE BOX ──
+  const kmTop = 0.58, kmH = 2.0;
+  slide.addShape(pptx.shapes.RECTANGLE, { x:0.2, y:kmTop, w:W-0.4, h:kmH, fill:{color:WHITE}, line:{color:BORDER, width:0.75} });
+  slide.addText('Key Message', { x:0.2, y:kmTop+0.06, w:W-0.4, h:0.26, fontSize:11, bold:true, color:BLACK, fontFace:'Calibri', align:'center' });
+
+  const mkRun = (text, url, bold) => ({
+    text, options:{ bold:!!bold, color: url ? BLUE : DGRAY, fontSize:10, fontFace:'Calibri', hyperlink: url ? {url} : undefined, breakLine:false }
+  });
+
+  slide.addText([mkRun(String(cFixed), qU.totalFixed, true), mkRun(' Defects have been fixed, verified, and closed for ' + state.teamDisplayName + ' ' + rv + ' Release', qU.totalFixed, false)],
+    { x:0.45, y:kmTop+0.36, w:W-0.65, h:0.22, bullet:true });
+  slide.addText([mkRun(String(cFound), qU.bugsFound, true), mkRun(' Defects found on ' + state.teamDisplayName + ' ' + rv + ' Release', qU.bugsFound, false)],
+    { x:0.45, y:kmTop+0.60, w:W-0.65, h:0.22, bullet:true });
+
+  [[cFF,'bugsFoundFixed',' defects fixed in ' + state.teamDisplayName + ' '+rv+' Release'],
+   [cOpen,'openBugs',' defect that is open for the '+rv+' Release'],
+   [cDeferred,'deferredBugs',' Defects are deferred to be fixed as part of upcoming release']
+  ].forEach(([cnt, key, txt], i) => {
+    slide.addText([mkRun(String(cnt), qU[key], true), mkRun(txt, qU[key], false)],
+      { x:0.95, y:kmTop+0.84+i*0.24, w:W-1.15, h:0.22, bullet:{indent:30} });
+  });
+
+  // ── DASHBOARD & RELEASE NOTE centered ──
+  const dashY = kmTop + kmH + 0.08;
+  slide.addShape(pptx.shapes.RECTANGLE, { x:0.2, y:dashY, w:W-0.4, h:0.56, fill:{color:WHITE}, line:{color:BORDER, width:0.75} });
+  slide.addText([
+    {text:'Dashboard    :  ', options:{bold:true, color:BLACK, fontSize:10, fontFace:'Calibri'}},
+    {text:'Dashboard for ' + state.teamDisplayName + ' '+rv+' Release', options:{color:BLUE, fontSize:10, fontFace:'Calibri', hyperlink:{url: state.dashboardUrl || ('https://dev.azure.com/'+state.orgName)}}}
+  ], { x:0.2, y:dashY+0.06, w:W-0.4, h:0.2, align:'center' });
+  slide.addText([
+    {text:'Release Note: ', options:{bold:true, color:BLACK, fontSize:10, fontFace:'Calibri'}},
+    {text:'Release Note for TaxCaddy ' + state.teamDisplayName + ' '+rv, options:{color:BLUE, fontSize:10, fontFace:'Calibri'}}
+  ], { x:0.2, y:dashY+0.3, w:W-0.4, h:0.2, align:'center' });
+
+  // ── 4 CHARTS — matching reference small font sizes ──
+  const chartTop = dashY + 0.64;
+  const chartH   = H - chartTop - 0.1;
+
+  // Reference layout: 3 charts on top row, 1 on bottom right (like May 10.4.0)
+  // Left col: Phase (~35% width), Center: Priority (~35%), Right col top: Root Cause, Right col bottom: Severity
+  const leftW  = 4.1, midW = 4.1, rightW = 4.73;
+  const rightX = 0.2 + leftW + 0.1 + midW + 0.1;
+  const halfH  = (chartH - 0.1) / 2;
+
+  // Shared chart options — small fonts matching reference
+  const baseOpts = {
+    barDir: 'col',
+    showLegend:       false,
+    showTitle:        false,
+    showValue:        true,
+    dataLabelFontSize: 8,        // small count labels on bars
+    dataLabelColor:   BLACK,
+    dataLabelPosition:'t',
+    catAxisLabelFontSize: 7,     // small X-axis labels
+    valAxisLabelFontSize: 7,     // small Y-axis labels
+    valAxisMinVal:    0,
+    valAxisMajorUnit: 1,
+    chartColors:      [CHARTBLUE, '70AD47', 'ED7D31', 'FFC000', 'FF0000', 'A9D18E', '5B9BD5'],
+  };
+
+  // Chart 1: Defect Found By Phase (env) — left
+  slide.addText('Defect Found By Phase', { x:0.2, y:chartTop, w:leftW, h:0.2, fontSize:8, color:DGRAY, fontFace:'Calibri', align:'center' });
+  slide.addChart(pptx.charts.BAR, envData, { x:0.2, y:chartTop+0.2, w:leftW, h:chartH-0.2, ...baseOpts });
+
+  // Chart 2: Defect Found By Priority — center
+  slide.addText('Defect Found By Priority', { x:0.2+leftW+0.1, y:chartTop, w:midW, h:0.2, fontSize:8, color:DGRAY, fontFace:'Calibri', align:'center' });
+  slide.addChart(pptx.charts.BAR, priorityData, { x:0.2+leftW+0.1, y:chartTop+0.2, w:midW, h:chartH-0.2, ...baseOpts });
+
+  // Chart 3: Root Cause — right top half
+  slide.addText('Defect by Root Cause  v. Release Version', { x:rightX, y:chartTop, w:rightW, h:0.2, fontSize:8, color:DGRAY, fontFace:'Calibri', align:'center' });
+  slide.addChart(pptx.charts.BAR, rcData, { x:rightX, y:chartTop+0.2, w:rightW, h:halfH-0.05, ...baseOpts });
+
+  // Chart 4: Severity — right bottom half
+  slide.addText('Defect By Severity', { x:rightX, y:chartTop+halfH+0.1, w:rightW, h:0.2, fontSize:8, color:DGRAY, fontFace:'Calibri', align:'center' });
+  slide.addChart(pptx.charts.BAR, severityData, { x:rightX, y:chartTop+halfH+0.3, w:rightW, h:halfH-0.25, ...baseOpts });
+
+  await pptx.writeFile({ fileName: 'QA_Test_Summary_Closure_Report_for_TaxCaddy_' + state.teamDisplayName + '_' + state.tag + '_Release.pptx' });
+}
+
+function downloadPPT() {
+  if (!state.releaseVersion) { toast('Please run Generate first', 'error'); return; }
+  buildAndDownloadPPT().then(() => toast('PPT downloaded ✓', 'success')).catch(e => toast('PPT error: ' + e.message, 'error'));
+}
+
+// ─────────────────────────────────────────────────────────
+// DELETE REPORT
+// ─────────────────────────────────────────────────────────
+
+function confirmDelete() {
+  const rv = state.releaseVersion || '';
+  const confirmMsg = 'Delete the report for "' + rv + '"? This will permanently remove all 6 queries, the release subfolder, and the dashboard. Cannot be undone.';
+  if (!confirm(confirmMsg)) return;
+
+  // Reuse runDelete with the current release version
+  // Create a temporary hidden input if needed
+  let inp = document.getElementById('deleteReleaseVersion');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.id = 'deleteReleaseVersion';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+  }
+  inp.value = rv;
+
+  // Create deleteSteps and deleteProgress containers inside results card
+  let prog = document.getElementById('deleteProgress');
+  if (!prog) {
+    prog = document.createElement('div');
+    prog.id = 'deleteProgress';
+    prog.style.marginTop = '1rem';
+    prog.style.background = '#FFF5F5';
+    prog.style.border = '1px solid #FECACA';
+    prog.style.borderRadius = '8px';
+    prog.style.padding = '1rem';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:13px;font-weight:600;color:#DC2626;margin-bottom:0.75rem;';
+    title.textContent = 'Deleting report…';
+    prog.appendChild(title);
+    const steps = document.createElement('div');
+    steps.id = 'deleteSteps';
+    prog.appendChild(steps);
+    document.getElementById('resultsCard').appendChild(prog);
+  }
+  prog.style.display = 'block';
+  document.getElementById('deleteSteps').innerHTML = '';
+  runDelete();
+}
+
+function setDeleteStep(container, icon, text, status) {
+  // status: 'running' | 'done' | 'error' | 'skip'
+  const colors = { running:'#1D4ED8', done:'#059669', error:'#DC2626', skip:'#6B7280' };
+  const icons  = { running:'⟳', done:'✓', error:'✕', skip:'—' };
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #FEE2E2;font-size:13px;';
+  div.innerHTML = '<span style="width:20px;height:20px;border-radius:50%;background:' + colors[status] + ';color:white;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:1px;">' + icons[status] + '</span>'
+    + '<span style="color:' + (status==='error'?'#DC2626':'#374151') + ';">' + text + '</span>';
+  container.appendChild(div);
+  return div;
+}
+
+async function runDelete() {
+  const rvRaw = document.getElementById('deleteReleaseVersion').value.trim();
+  if (!rvRaw) { toast('Enter a release version to delete', 'error'); return; }
+
+  // Read config
+  const org      = document.getElementById('orgName').value.trim();
+  const proj     = document.getElementById('projectName').value.trim();
+  const teamName = document.getElementById('teamName').value;
+  const pat      = document.getElementById('patToken').value.trim();
+  const qFolder  = document.getElementById('queryFolderPath').value.trim() || 'My Queries';
+
+  if (!org || !proj || !pat) { toast('Fill Org, Project and PAT first', 'error'); return; }
+
+  const rvTag    = tagify(rvRaw);
+  const teamDisp = getTeamDisplayName(teamName);
+  const relFolderName = teamDisp + ' ' + rvRaw + ' Release';
+
+  // Show progress — ensure containers exist (created by confirmDelete)
+  let progDiv = document.getElementById('deleteProgress');
+  let stepsDiv = document.getElementById('deleteSteps');
+  if (!progDiv) {
+    progDiv = document.createElement('div');
+    progDiv.id = 'deleteProgress';
+    progDiv.style.cssText = 'margin-top:1rem;background:#FFF5F5;border:1px solid #FECACA;border-radius:8px;padding:1rem;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:13px;font-weight:600;color:#DC2626;margin-bottom:0.75rem;';
+    title.textContent = 'Deleting report…';
+    progDiv.appendChild(title);
+    stepsDiv = document.createElement('div');
+    stepsDiv.id = 'deleteSteps';
+    progDiv.appendChild(stepsDiv);
+    const rc = document.getElementById('resultsCard');
+    if (rc) rc.appendChild(progDiv);
+    else document.body.appendChild(progDiv);
+  }
+  progDiv.style.display = 'block';
+  stepsDiv.innerHTML = '';
+
+  let deleted = 0, failed = 0;
+
+  // ── STEP 1: Find the release folder ──
+  const s1 = setDeleteStep(stepsDiv, '', 'Finding release folder "' + relFolderName + '"…', 'running');
+  let folderId = null;
+  try {
+    const parentPath = qFolder.split('/').map(p => encodeURIComponent(p)).join('/');
+    const checkUrl   = adoBase2(org, proj) + '/_apis/wit/queries/' + parentPath + '/' + encodeURIComponent(relFolderName) + '?api-version=7.1';
+    const r = await fetch(checkUrl, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Accept': 'application/json' }});
+    if (r.ok) {
+      const data = await r.json();
+      folderId = data.id;
+      s1.querySelector('span:last-child').textContent = 'Folder found: ' + relFolderName;
+      s1.querySelector('span:first-child').textContent = '✓';
+      s1.querySelector('span:first-child').style.background = '#059669';
+    } else {
+      s1.querySelector('span:last-child').textContent = 'Folder not found — will search by query names';
+      s1.querySelector('span:first-child').textContent = '—';
+      s1.querySelector('span:first-child').style.background = '#6B7280';
+    }
+  } catch(e) {
+    s1.querySelector('span:last-child').textContent = 'Folder lookup failed: ' + e.message;
+    s1.querySelector('span:first-child').textContent = '—';
+    s1.querySelector('span:first-child').style.background = '#6B7280';
+  }
+
+  // ── STEP 2: Find and delete all 6 queries ──
+  const queryNames = [
+    'Bugs Found & Fixed in ' + teamDisp + ' ' + rvRaw + ' release',
+    'Bugs Found in ' + teamDisp + ' ' + rvRaw + ' release',
+    'Deferred Bugs in ' + teamDisp + ' ' + rvRaw + ' release',
+    'Open Bugs in ' + teamDisp + ' ' + rvRaw + ' release',
+    'Total Bug Fixed in ' + teamDisp + ' ' + rvRaw + ' release',
+    'Total Work Items in ' + teamDisp + ' ' + rvRaw + ' release'
+  ];
+
+  // If we have folderId, list queries in folder
+  let queryIds = [];
+  if (folderId) {
+    try {
+      const listUrl = adoBase2(org, proj) + '/_apis/wit/queries/' + folderId + '?$depth=1&$expand=all&api-version=7.1';
+      const r = await fetch(listUrl, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Accept': 'application/json' }});
+      if (r.ok) {
+        const data = await r.json();
+        queryIds = (data.children || []).filter(q => !q.isFolder).map(q => ({ id: q.id, name: q.name }));
+      }
+    } catch(e) {}
+  }
+
+  // Delete each query
+  for (const qName of queryNames) {
+    const qs = setDeleteStep(stepsDiv, '', 'Deleting query: ' + qName, 'running');
+    try {
+      // Find by ID from folder listing, or search by name
+      let qId = null;
+      const fromFolder = queryIds.find(q => q.name && q.name.toLowerCase() === qName.toLowerCase());
+      if (fromFolder) qId = fromFolder.id;
+
+      if (!qId) {
+        // Try to find in My Queries or Shared Queries by searching
+        const searchUrl = adoBase2(org, proj) + '/_apis/wit/queries?$filter=' + encodeURIComponent(qName) + '&api-version=7.1';
+        const sr = await fetch(searchUrl, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Accept': 'application/json' }});
+        if (sr.ok) {
+          const sd = await sr.json();
+          const found = (sd.value || []).find(q => q.name === qName);
+          if (found) qId = found.id;
+        }
+      }
+
+      if (qId) {
+        const delUrl = adoBase2(org, proj) + '/_apis/wit/queries/' + qId + '?api-version=7.1';
+        const dr = await fetch(delUrl, { method:'DELETE', headers: { 'Authorization': 'Basic ' + btoa(':' + pat) }});
+        if (dr.ok || dr.status === 204) {
+          qs.querySelector('span:last-child').textContent = '✓ Deleted: ' + qName;
+          qs.querySelector('span:first-child').textContent = '✓';
+          qs.querySelector('span:first-child').style.background = '#059669';
+          deleted++;
+        } else {
+          throw new Error('HTTP ' + dr.status);
+        }
+      } else {
+        qs.querySelector('span:last-child').textContent = 'Not found (already deleted?): ' + qName;
+        qs.querySelector('span:first-child').textContent = '—';
+        qs.querySelector('span:first-child').style.background = '#6B7280';
+      }
+    } catch(e) {
+      qs.querySelector('span:last-child').textContent = '✕ Failed: ' + qName + ' — ' + e.message;
+      qs.querySelector('span:first-child').textContent = '✕';
+      qs.querySelector('span:first-child').style.background = '#DC2626';
+      failed++;
+    }
+  }
+
+  // ── STEP 3: Delete the release subfolder ──
+  if (folderId) {
+    const sf = setDeleteStep(stepsDiv, '', 'Deleting folder "' + relFolderName + '"…', 'running');
+    try {
+      const delUrl = adoBase2(org, proj) + '/_apis/wit/queries/' + folderId + '?api-version=7.1';
+      const dr = await fetch(delUrl, { method:'DELETE', headers: { 'Authorization': 'Basic ' + btoa(':' + pat) }});
+      if (dr.ok || dr.status === 204) {
+        sf.querySelector('span:last-child').textContent = '✓ Folder deleted: ' + relFolderName;
+        sf.querySelector('span:first-child').textContent = '✓';
+        sf.querySelector('span:first-child').style.background = '#059669';
+        deleted++;
+      } else {
+        throw new Error('HTTP ' + dr.status);
+      }
+    } catch(e) {
+      sf.querySelector('span:last-child').textContent = '✕ Folder delete failed: ' + e.message;
+      sf.querySelector('span:first-child').textContent = '✕';
+      sf.querySelector('span:first-child').style.background = '#DC2626';
+      failed++;
+    }
+  }
+
+  // ── STEP 4: Find and delete the dashboard ──
+  const ds = setDeleteStep(stepsDiv, '', 'Finding and deleting dashboard…', 'running');
+  try {
+    const dashName = teamDisp + ' ' + rvRaw;  // truncated to 32 chars when created
+    const dashListUrl = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj)
+      + '/' + encodeURIComponent(teamName) + '/_apis/dashboard/dashboards?api-version=7.1-preview.3';
+    const lr = await fetch(dashListUrl, { headers: { 'Authorization': 'Basic ' + btoa(':' + pat), 'Accept': 'application/json' }});
+    if (lr.ok) {
+      const ld = await lr.json();
+      const dashes = ld.dashboardEntries || ld.value || [];
+      // Find dashboard whose name contains the release version
+      const match = dashes.find(d => d.name && (d.name.includes(rvRaw) || d.name.includes(rvTag)));
+      if (match) {
+        const delDashUrl = 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj)
+          + '/' + encodeURIComponent(teamName) + '/_apis/dashboard/dashboards/' + match.id + '?api-version=7.1-preview.3';
+        const dr = await fetch(delDashUrl, { method:'DELETE', headers: { 'Authorization': 'Basic ' + btoa(':' + pat) }});
+        if (dr.ok || dr.status === 204) {
+          ds.querySelector('span:last-child').textContent = '✓ Dashboard deleted: ' + match.name;
+          ds.querySelector('span:first-child').textContent = '✓';
+          ds.querySelector('span:first-child').style.background = '#059669';
+          deleted++;
+        } else {
+          throw new Error('HTTP ' + dr.status);
+        }
+      } else {
+        ds.querySelector('span:last-child').textContent = 'Dashboard not found for "' + rvRaw + '" (may have different name)';
+        ds.querySelector('span:first-child').textContent = '—';
+        ds.querySelector('span:first-child').style.background = '#6B7280';
+      }
+    } else {
+      throw new Error('HTTP ' + lr.status);
+    }
+  } catch(e) {
+    ds.querySelector('span:last-child').textContent = '✕ Dashboard delete failed: ' + e.message;
+    ds.querySelector('span:first-child').textContent = '✕';
+    ds.querySelector('span:first-child').style.background = '#DC2626';
+    failed++;
+  }
+
+  // ── SUMMARY ──
+  const summary = document.createElement('div');
+  summary.style.cssText = 'margin-top:0.75rem;padding:10px;border-radius:6px;font-size:13px;font-weight:500;';
+  if (failed === 0) {
+    summary.style.background = '#D1FAE5';
+    summary.style.color = '#065F46';
+    summary.textContent = '✅ Report deleted successfully! (' + deleted + ' items removed)';
+    // Reload versions dropdown
+    if (teamName) loadReleaseVersions(teamName);
+  } else {
+    summary.style.background = '#FEF3C7';
+    summary.style.color = '#92400E';
+    summary.textContent = '⚠️ Partially deleted: ' + deleted + ' removed, ' + failed + ' failed. Check permissions.';
+  }
+  stepsDiv.appendChild(summary);
+}
+
+// Helper: ADO base URL via proxy
+function adoBase2(org, proj) {
+  return 'http://localhost:4000/ado-proxy/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj);
+}
+
+// ─────────────────────────────────────────────────────────
+// FETCH LOGGED-IN USER (shows in badge after Test Connection)
+// ─────────────────────────────────────────────────────────
+async function fetchLoggedInUser(org, pat, authHeader) {
+  const badge    = document.getElementById('userBadge');
+  const nameEl   = document.getElementById('userName');
+  const emailEl  = document.getElementById('userEmail');
+  const avatarEl = document.getElementById('userAvatar');
+  if (!badge) return;
+  try {
+    const connUrl = 'https://dev.azure.com/' + encodeURIComponent(org) + '/_apis/connectiondata?api-version=7.1';
+    const connRes = await fetch(connUrl, { headers: authHeader });
+    if (connRes.ok) {
+      const connData = await connRes.json();
+      const user = connData.authenticatedUser;
+      if (user) {
+        const displayName = user.providerDisplayName || 'Unknown User';
+        nameEl.textContent  = displayName;
+        emailEl.textContent = '';
+        const initials = displayName.split(' ').filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('');
+        avatarEl.textContent = initials || '?';
+        // Try email from profile
+        try {
+          const profUrl = 'https://vssps.dev.azure.com/' + encodeURIComponent(org) + '/_apis/profile/profiles/me?api-version=7.1';
+          const profRes = await fetch(profUrl, { headers: authHeader });
+          if (profRes.ok) {
+            const prof = await profRes.json();
+            if (prof.emailAddress) emailEl.textContent = prof.emailAddress;
+          }
+        } catch(_) {}
+        badge.className = 'user-badge visible';
+        return;
+      }
+    }
+  } catch(_) {}
+}
+
+// ─────────────────────────────────────────────────────────
+// VIEW EXISTING REPORT — read-only lookup
+// ─────────────────────────────────────────────────────────
+async function viewReport() {
+  state.orgName        = document.getElementById('orgName').value.trim();
+  state.projectName    = document.getElementById('projectName').value.trim();
+  state.teamName       = document.getElementById('teamName').value.trim();
+  state.areaPath       = document.getElementById('areaPath').value.trim();
+  state.queryFolderPath = (document.getElementById('queryFolderPath').value || 'My Queries').trim();
+  state.pat            = document.getElementById('patToken').value.trim();
+  state.releaseVersion = document.getElementById('releaseVersion').value.trim();
+  state.teamDisplayName = getTeamDisplayName(state.teamName);
+
+  if (!state.orgName || !state.projectName || !state.pat) { toast('Fill Org, Project and PAT first', 'error'); return; }
+  if (!state.teamName) { toast('Select a team', 'error'); return; }
+  if (!state.releaseVersion) { toast('Select a Release Version', 'error'); return; }
+
+  document.getElementById('progressCard').classList.remove('visible');
+  document.getElementById('viewerCard').classList.remove('visible');
+  document.getElementById('resultsCard').classList.remove('visible');
+
+  const viewer = document.getElementById('viewerCard');
+  viewer.classList.add('visible');
+  document.getElementById('viewerContent').innerHTML =
+    '<div style="font-size:13px;color:var(--muted);">⏳ Looking up existing report for <strong>' + state.releaseVersion + '</strong>…</div>';
+  viewer.scrollIntoView({ behavior: 'smooth' });
+
+  // Compute folder name
+  const releaseFolderName = teamScopedRelease() + ' Release';
+  const parentPath    = state.queryFolderPath || 'My Queries';
+  const encodedParent = parentPath.split('/').map(p => encodeURIComponent(p)).join('/');
+  const folderApiPath = encodedParent + '/' + encodeURIComponent(releaseFolderName);
+
+  let folderData = null;
+  try {
+    folderData = await adoFetch(
+      adoBase() + '/_apis/wit/queries/' + folderApiPath + '?$depth=1&$expand=all&api-version=7.1', 'GET');
+  } catch(e) {}
+
+  // Look up dashboard
+  const expectedDashName = state.releaseVersion.substring(0, 64).trim();
+  let dashData = null;
+  try {
+    const dashList = await adoFetch(
+      'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/'
+      + encodeURIComponent(state.teamName) + '/_apis/dashboard/dashboards?api-version=7.1-preview.3', 'GET');
+    const allDashes = dashList.dashboardEntries || dashList.value || [];
+    dashData = allDashes.find(d => d.name === expectedDashName);
+  } catch(e) {}
+
+  const hasFolder  = folderData && folderData.id;
+  const queries    = hasFolder ? (folderData.children || []).filter(c => !c.isFolder) : [];
+  const hasAnything = hasFolder || dashData;
+
+  if (!hasAnything) {
+    document.getElementById('viewerContent').innerHTML =
+      '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:0.5rem;">📭 No Report Found</div>' +
+      '<div style="font-size:13px;color:var(--muted);">No queries or dashboard exist for <strong>' + state.releaseVersion + '</strong>. Click Generate All in ADO to create it.</div>';
+    return;
+  }
+
+  let links = '';
+  if (dashData) {
+    const dashUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_dashboards/dashboard/' + dashData.id;
+    links += '<div class="link-row"><div class="link-icon">📊</div><div><strong>Dashboard:</strong> <a href="' + dashUrl + '" target="_blank">' + dashData.name + ' ↗</a></div></div>';
+  }
+  if (hasFolder) {
+    queries.forEach(q => {
+      const qUrl = 'https://dev.azure.com/' + state.orgName + '/' + state.projectName + '/_queries/query/' + q.id + '/';
+      links += '<div class="link-row"><div class="link-icon">🔍</div><div><a href="' + qUrl + '" target="_blank">' + q.name + ' ↗</a></div></div>';
+    });
+  }
+
+  document.getElementById('viewerContent').innerHTML =
+    '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:0.5rem;">📂 Existing Report Found</div>' +
+    '<div style="font-size:13px;color:var(--muted);margin-bottom:1rem;">' + state.releaseVersion +
+    (hasFolder ? ' · ' + queries.length + ' queries' : '') + (dashData ? ' · 1 dashboard' : '') + '</div>' +
+    '<div class="links-section">' + links + '</div>';
+}
+
+function resetAll() {
+  state.createdQueries = {};
+  state.dashboardId = '';
+  state.dashboardUrl = '';
+  const rvEl = document.getElementById('releaseVersion'); if(rvEl) rvEl.value = '';
+  document.getElementById('progressCard').classList.remove('visible');
+  document.getElementById('viewerCard').classList.remove('visible');
+  document.getElementById('resultsCard').classList.remove('visible');
+  document.getElementById('generateBtn').disabled = false;
+  document.getElementById('releaseVersion').focus();
+  updatePreviews();
+}
+</script>
+</body>
+</html>
